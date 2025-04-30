@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "dgSpecHash": "+FyIsztmrTU=",
+  "success": true,
+  "projectFilePath": "C:\\Projects\\kafkatake2\\KafkaFlowProcessor\\KafkaFlowProcessor\\KafkaFlowProcessor.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\dorlu\\.nuget\\packages\\confluent.kafka\\2.8.0\\confluent.kafka.2.8.0.nupkg.sha512",
+    "C:\\Users\\dorlu\\.nuget\\packages\\kafkaflow\\4.0.0\\kafkaflow.4.0.0.nupkg.sha512",
+    "C:\\Users\\dorlu\\.nuget\\packages\\kafkaflow.abstractions\\4.0.0\\kafkaflow.abstractions.4.0.0.nupkg.sha512",
+    "C:\\Users\\dorlu\\.nuget\\packages\\kafkaflow.loghandler.console\\4.0.0\\kafkaflow.loghandler.console.4.0.0.nupkg.sha512",
+    "C:\\Users\\dorlu\\.nuget\\packages\\kafkaflow.microsoft.dependencyinjection\\4.0.0\\kafkaflow.microsoft.dependencyinjection.4.0.0.nupkg.sha512",
+    "C:\\Users\\dorlu\\.nuget\\packages\\kafkaflow.serializer.jsoncore\\4.0.0\\kafkaflow.serializer.jsoncore.4.0.0.nupkg.sha512",
+    "C:\\Users\\dorlu\\.nuget\\packages\\librdkafka.redist\\2.8.0\\librdkafka.redist.2.8.0.nupkg.sha512",
+    "C:\\Users\\dorlu\\.nuget\\packages\\microsoft.bcl.asyncinterfaces\\9.0.3\\microsoft.bcl.asyncinterfaces.9.0.3.nupkg.sha512",
+    "C:\\Users\\dorlu\\.nuget\\packages\\microsoft.extensions.dependencyinjection.abstractions\\9.0.3\\microsoft.extensions.dependencyinjection.abstractions.9.0.3.nupkg.sha512",
+    "C:\\Users\\dorlu\\.nuget\\packages\\microsoft.io.recyclablememorystream\\3.0.1\\microsoft.io.recyclablememorystream.3.0.1.nupkg.sha512",
+    "C:\\Users\\dorlu\\.nuget\\packages\\system.memory\\4.6.1\\system.memory.4.6.1.nupkg.sha512",
+    "C:\\Users\\dorlu\\.nuget\\packages\\system.text.json\\8.0.5\\system.text.json.8.0.5.nupkg.sha512",
+    "C:\\Users\\dorlu\\.nuget\\packages\\system.threading.channels\\9.0.3\\system.threading.channels.9.0.3.nupkg.sha512",
+    "C:\\Users\\dorlu\\.nuget\\packages\\system.threading.tasks.extensions\\4.6.1\\system.threading.tasks.extensions.4.6.1.nupkg.sha512"
+  ],
+  "logs": []
+}

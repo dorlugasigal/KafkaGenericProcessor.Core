@@ -1,0 +1,12 @@
+{
+  "Version": 1,
+  "Hash": "4pBFVtD8IMI2YroWHAa95OOJ+w033CWWsKOSi2bu+1Q=",
+  "Source": "KafkaFlowProcessor",
+  "BasePath": "_content/KafkaFlowProcessor",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": [],
+  "Endpoints": []
+}
