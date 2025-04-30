@@ -1,0 +1,9 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="Enricher.Sample/Enricher.Sample.csproj" />
+  <Project Path="KafkaGenericProcessor.Core/KafkaGenericProcessor.Core.csproj" />
+</Solution>
