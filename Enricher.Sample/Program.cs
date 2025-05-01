@@ -46,44 +46,31 @@ app.MapHealthChecks("/health", new HealthCheckOptions
     ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
 });
 
-app.MapGet("/test", async (IProducerAccessor producerAccessor, IOptions<KafkaProcessorSettings> options, ILogger<Program> logger) =>
+app.MapGet("/test-input", async (IProducerAccessor producerAccessor, IOptions<KafkaProcessorSettings> options, ILogger<Program> logger) =>
 {
     var kafkaSettings = options.Value;
     var testMessage = new MyInput(Guid.NewGuid().ToString(), $"Test message created at {DateTime.Now}");
-    return await ProduceMessageAsync(producerAccessor, kafkaSettings, kafkaSettings.ConsumerTopic, testMessage.Id, testMessage, logger);
-});
+    var producer = producerAccessor.GetProducer(kafkaSettings.ProducerName);
+    if (producer == null)
+    {
+        return Results.Problem($"Producer '{kafkaSettings.ProducerName}' not found. Check your Kafka configuration.");
+    }
+    var result = await producer.ProduceAsync(kafkaSettings.ConsumerTopic, Guid.NewGuid().ToString(), testMessage);
+    return Results.Ok(new { Result = result, Topic = kafkaSettings.ConsumerTopic });});
 
 app.MapGet("/test-output", async (IProducerAccessor producerAccessor, IOptions<KafkaProcessorSettings> options, ILogger<Program> logger) =>
 {
     var kafkaSettings = options.Value;
     var testOutput = new MyOutput(ProducedBy: $"Direct test from endpoint at {DateTime.Now}", ProcessedAt: DateTime.UtcNow);
-    return await ProduceMessageAsync(producerAccessor, kafkaSettings, kafkaSettings.ProducerTopic, Guid.NewGuid().ToString(), testOutput, logger);
+    var producer = producerAccessor.GetProducer(kafkaSettings.ProducerName);
+    if (producer == null)
+    {
+        return Results.Problem($"Producer '{kafkaSettings.ProducerName}' not found. Check your Kafka configuration.");
+    }
+    var result = await producer.ProduceAsync(kafkaSettings.ProducerTopic, Guid.NewGuid().ToString(), testOutput);
+    return Results.Ok(new { Result = result, Topic = kafkaSettings.ProducerTopic });
 });
 
-async Task<IResult> ProduceMessageAsync<T>(
-    IProducerAccessor producerAccessor, 
-    KafkaProcessorSettings settings, 
-    string topic, 
-    string messageKey, 
-    T message, 
-    ILogger? logger = null)
-{
-    try
-    {
-        var producer = producerAccessor.GetProducer(settings.ProducerName);
-        if (producer == null)
-        {
-            return Results.Problem($"Producer '{settings.ProducerName}' not found. Check your Kafka configuration.");
-        }
-        var result = await producer.ProduceAsync(topic, messageKey, message);
-        return Results.Ok(new { Result = result, Topic = topic });
-    }
-    catch (Exception ex)
-    {
-        logger?.LogError(ex, "Error producing message to topic: {Topic}", topic);
-        return Results.Problem($"Error sending message: {ex.Message}");
-    }
-}
 
 var kafkaBus = app.Services.CreateKafkaBus();
 await kafkaBus.StartAsync();
