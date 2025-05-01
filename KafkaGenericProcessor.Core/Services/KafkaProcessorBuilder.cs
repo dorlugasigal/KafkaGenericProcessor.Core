@@ -99,8 +99,8 @@ public class KafkaProcessorBuilder<TInput, TOutput> : IKafkaProcessorBuilder
     /// </summary>
     public void Build()
     {
-        ValidateSettings();
-
+        // Configuration is already validated in ServiceCollectionExtensions
+        
         // Configure KafkaFlow
         _services.AddKafka(kafka =>
         {
@@ -144,36 +144,5 @@ public class KafkaProcessorBuilder<TInput, TOutput> : IKafkaProcessorBuilder
                 });
             });
         });
-    }
-
-    /// <summary>
-    /// Validates the Kafka processor settings
-    /// </summary>
-    private void ValidateSettings()
-    {
-        if (_settings.Brokers == null || _settings.Brokers.Length == 0)
-        {
-            throw new InvalidOperationException("Kafka broker addresses must be specified");
-        }
-
-        if (string.IsNullOrWhiteSpace(_settings.ConsumerTopic))
-        {
-            throw new InvalidOperationException("Consumer topic must be specified");
-        }
-
-        if (string.IsNullOrWhiteSpace(_settings.ProducerTopic))
-        {
-            throw new InvalidOperationException("Producer topic must be specified");
-        }
-
-        if (string.IsNullOrWhiteSpace(_settings.GroupId))
-        {
-            throw new InvalidOperationException("Consumer group ID must be specified");
-        }
-        
-        if (string.IsNullOrWhiteSpace(_settings.HealthCheckTopic))
-        {
-            _settings.HealthCheckTopic = "kafka-health-check";
-        }
     }
 }
