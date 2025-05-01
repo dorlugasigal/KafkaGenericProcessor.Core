@@ -44,19 +44,20 @@ internal static class KafkaConfigurationValidator
             errors.Add("Consumer group ID is not configured.");
         }
 
+        if (string.IsNullOrWhiteSpace(settings.HealthCheckTopic))
+        {
+            errors.Add("Health check topic is not configured.");
+        }
+        
+        if (string.IsNullOrWhiteSpace(settings.ProducerName))
+        {
+            errors.Add("Producer name is not configured.");
+        }
+
         if (errors.Any())
         {
             throw new ApplicationException($"Invalid Kafka configuration: {string.Join(", ", errors)}");
         }
         
-        if (string.IsNullOrWhiteSpace(settings.HealthCheckTopic))
-        {
-            settings.HealthCheckTopic = "kafka-health-check";
-        }
-        
-        if (string.IsNullOrWhiteSpace(settings.ProducerName))
-        {
-            settings.ProducerName = "producer";
-        }
     }
 }

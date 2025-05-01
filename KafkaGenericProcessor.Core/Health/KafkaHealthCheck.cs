@@ -12,32 +12,13 @@ namespace KafkaGenericProcessor.Core.Health;
 /// <summary>
 /// A health check for Kafka that verifies connectivity by sending a test message.
 /// </summary>
-public class KafkaHealthCheck : IHealthCheck
+public class KafkaHealthCheck(
+    IProducerAccessor producerAccessor,
+    ILogger<KafkaHealthCheck> logger,
+    string producerName,
+    string healthCheckTopic) : IHealthCheck
 {
-    private readonly IProducerAccessor _producerAccessor;
-    private readonly ILogger<KafkaHealthCheck> _logger;
-    private readonly string _producerName;
-    private readonly string _healthCheckTopic;
     private DateTime _lastSuccessfulCheck = DateTime.MinValue;
-
-    /// <summary>
-    /// Creates a new instance of KafkaHealthCheck
-    /// </summary>
-    /// <param name="producerAccessor">The producer accessor</param>
-    /// <param name="logger">The logger</param>
-    /// <param name="producerName">The name of the producer to use for health checks</param>
-    /// <param name="healthCheckTopic">The topic to send health check messages to</param>
-    public KafkaHealthCheck(
-        IProducerAccessor producerAccessor,
-        ILogger<KafkaHealthCheck> logger,
-        string producerName = "producer",
-        string healthCheckTopic = "kafka-health-check")
-    {
-        _producerAccessor = producerAccessor ?? throw new ArgumentNullException(nameof(producerAccessor));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _producerName = producerName ?? throw new ArgumentNullException(nameof(producerName));
-        _healthCheckTopic = healthCheckTopic ?? throw new ArgumentNullException(nameof(healthCheckTopic));
-    }
 
     /// <summary>
     /// Performs a health check by sending a test message to Kafka
@@ -49,12 +30,12 @@ public class KafkaHealthCheck : IHealthCheck
     {
         try
         {
-            var producer = _producerAccessor.GetProducer(_producerName);
+            var producer = producerAccessor.GetProducer(producerName);
             
             if (producer == null)
             {
-                var message = $"Producer '{_producerName}' not found";
-                _logger.LogWarning(message);
+                var message = $"Producer '{producerName}' not found";
+                logger.LogWarning(message);
                 return new HealthCheckResult(context.Registration.FailureStatus, message);
             }
 
@@ -66,7 +47,7 @@ public class KafkaHealthCheck : IHealthCheck
             };
 
             // Send the health check message
-            await producer.ProduceAsync(_healthCheckTopic, healthMessage.Id, healthMessage);
+            await producer.ProduceAsync(healthCheckTopic, healthMessage.Id, healthMessage);
             
             _lastSuccessfulCheck = DateTime.UtcNow;
             
@@ -74,13 +55,13 @@ public class KafkaHealthCheck : IHealthCheck
                 new Dictionary<string, object>
                 {
                     { "LastSuccessfulCheck", _lastSuccessfulCheck },
-                    { "HealthCheckTopic", _healthCheckTopic },
+                    { "HealthCheckTopic", healthCheckTopic },
                     { "MessageId", healthMessage.Id }
                 });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during Kafka health check");
+            logger.LogError(ex, "Error during Kafka health check");
             return new HealthCheckResult(
                 context.Registration.FailureStatus,
                 "Failed to connect to Kafka",

@@ -37,8 +37,8 @@ public static class HealthCheckExtensions
             .Add(new HealthCheckRegistration(
                 name: kafkaCheckName,
                 factory: sp => new KafkaHealthCheck(
-                    sp.GetRequiredService<IProducerAccessor>(),
-                    sp.GetRequiredService<ILogger<KafkaHealthCheck>>(),
+                    sp.GetRequiredService<IProducerAccessor>() ?? throw new ArgumentNullException(nameof(IProducerAccessor)),
+                    sp.GetRequiredService<ILogger<KafkaHealthCheck>>() ?? throw new ArgumentNullException(nameof(ILogger<KafkaHealthCheck>)),
                     producerName,
                     healthCheckTopic),
                 failureStatus: HealthStatus.Unhealthy,
