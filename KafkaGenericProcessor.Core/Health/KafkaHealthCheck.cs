@@ -12,13 +12,12 @@ namespace KafkaGenericProcessor.Core.Health;
 /// <summary>
 /// A health check for Kafka that verifies connectivity by sending a test message.
 /// </summary>
-public class KafkaHealthCheck : IHealthCheck, IDisposable
+public class KafkaHealthCheck : IHealthCheck
 {
     private readonly IProducerAccessor _producerAccessor;
     private readonly ILogger<KafkaHealthCheck> _logger;
     private readonly string _producerName;
     private readonly string _healthCheckTopic;
-    private readonly TimeSpan _timeout;
     private DateTime _lastSuccessfulCheck = DateTime.MinValue;
 
     /// <summary>
@@ -28,19 +27,16 @@ public class KafkaHealthCheck : IHealthCheck, IDisposable
     /// <param name="logger">The logger</param>
     /// <param name="producerName">The name of the producer to use for health checks</param>
     /// <param name="healthCheckTopic">The topic to send health check messages to</param>
-    /// <param name="timeout">The timeout period for health check operations</param>
     public KafkaHealthCheck(
         IProducerAccessor producerAccessor,
         ILogger<KafkaHealthCheck> logger,
         string producerName = "producer",
-        string healthCheckTopic = "kafka-health-check",
-        TimeSpan? timeout = null)
+        string healthCheckTopic = "kafka-health-check")
     {
         _producerAccessor = producerAccessor ?? throw new ArgumentNullException(nameof(producerAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _producerName = producerName ?? throw new ArgumentNullException(nameof(producerName));
         _healthCheckTopic = healthCheckTopic ?? throw new ArgumentNullException(nameof(healthCheckTopic));
-        _timeout = timeout ?? TimeSpan.FromSeconds(5);
     }
 
     /// <summary>
@@ -69,39 +65,18 @@ public class KafkaHealthCheck : IHealthCheck, IDisposable
                 Id = Guid.NewGuid().ToString()
             };
 
-            // Create a combined token that includes our timeout
-            using var timeoutCts = new CancellationTokenSource(_timeout);
-            using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, cancellationToken);
-
-            try
-            {
-                // Send the health check message
-                var result = await producer.ProduceAsync(
-                    _healthCheckTopic,
-                    healthMessage.Id,
-                    healthMessage);
-
-                _lastSuccessfulCheck = DateTime.UtcNow;
-                
-                return HealthCheckResult.Healthy("Kafka connection is healthy", 
-                    new Dictionary<string, object>
-                    {
-                        { "LastSuccessfulCheck", _lastSuccessfulCheck },
-                        { "HealthCheckTopic", _healthCheckTopic },
-                        { "MessageId", healthMessage.Id }
-                    });
-            }
-            catch (OperationCanceledException)
-            {
-                if (timeoutCts.IsCancellationRequested)
+            // Send the health check message
+            await producer.ProduceAsync(_healthCheckTopic, healthMessage.Id, healthMessage);
+            
+            _lastSuccessfulCheck = DateTime.UtcNow;
+            
+            return HealthCheckResult.Healthy("Kafka connection is healthy", 
+                new Dictionary<string, object>
                 {
-                    var message = $"Health check timed out after {_timeout.TotalSeconds} seconds";
-                    _logger.LogWarning(message);
-                    return new HealthCheckResult(context.Registration.FailureStatus, message);
-                }
-                
-                throw; // This was a user cancellation
-            }
+                    { "LastSuccessfulCheck", _lastSuccessfulCheck },
+                    { "HealthCheckTopic", _healthCheckTopic },
+                    { "MessageId", healthMessage.Id }
+                });
         }
         catch (Exception ex)
         {
@@ -116,15 +91,6 @@ public class KafkaHealthCheck : IHealthCheck, IDisposable
                     { "Exception", ex.Message }
                 });
         }
-    }
-
-    /// <summary>
-    /// Disposes of resources
-    /// </summary>
-    public void Dispose()
-    {
-        // KafkaFlow producers are managed by the library
-        // so we don't need to dispose anything here
     }
 
     /// <summary>

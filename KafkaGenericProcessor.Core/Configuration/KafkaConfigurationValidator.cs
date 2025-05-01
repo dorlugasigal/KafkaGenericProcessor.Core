@@ -7,7 +7,7 @@ namespace KafkaGenericProcessor.Core.Configuration;
 /// <summary>
 /// Validates Kafka configuration settings
 /// </summary>
-public static class KafkaConfigurationValidator
+internal static class KafkaConfigurationValidator
 {
     /// <summary>
     /// Validates the Kafka processor settings and throws exceptions for any invalid settings
@@ -15,7 +15,7 @@ public static class KafkaConfigurationValidator
     /// <param name="settings">The settings to validate</param>
     /// <exception cref="ArgumentNullException">Thrown if settings is null</exception>
     /// <exception cref="ApplicationException">Thrown if any settings are invalid</exception>
-    public static void ValidateKafkaSettings(KafkaProcessorSettings settings)
+    internal static void ValidateKafkaSettings(KafkaProcessorSettings settings)
     {
         if (settings == null)
         {
@@ -49,7 +49,6 @@ public static class KafkaConfigurationValidator
             throw new ApplicationException($"Invalid Kafka configuration: {string.Join(", ", errors)}");
         }
         
-        // Apply defaults for optional settings if not set
         if (string.IsNullOrWhiteSpace(settings.HealthCheckTopic))
         {
             settings.HealthCheckTopic = "kafka-health-check";

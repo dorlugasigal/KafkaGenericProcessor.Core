@@ -5,6 +5,7 @@ using KafkaGenericProcessor.Core.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace KafkaGenericProcessor.Core.Middlewares;
@@ -21,6 +22,7 @@ public class GenericProcessingMiddleware<TInput, TOutput> : IMessageMiddleware
     private readonly IProducerAccessor _producerAccessor;
     private readonly KafkaProcessorSettings _settings;
     private readonly ILogger<GenericProcessingMiddleware<TInput, TOutput>> _logger;
+    private readonly string _inputTypeName;
 
     /// <summary>
     /// Creates a new instance of GenericProcessingMiddleware
@@ -37,13 +39,12 @@ public class GenericProcessingMiddleware<TInput, TOutput> : IMessageMiddleware
         _producerAccessor = producerAccessor ?? throw new ArgumentNullException(nameof(producerAccessor));
         _settings = settings?.Value ?? throw new ArgumentNullException(nameof(settings));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _inputTypeName = typeof(TInput).Name;
         
-        // Log the middleware settings at startup
         _logger.LogInformation(
-            "Middleware initialized with settings: ProducerName={ProducerName}, ProducerTopic={ProducerTopic}, ConsumerTopic={ConsumerTopic}",
-            _settings.ProducerName,
-            _settings.ProducerTopic,
-            _settings.ConsumerTopic);
+            "Middleware initialized for processing {InputType} to {OutputType}",
+            _inputTypeName,
+            typeof(TOutput).Name);
     }
 
     /// <summary>
@@ -53,72 +54,44 @@ public class GenericProcessingMiddleware<TInput, TOutput> : IMessageMiddleware
     {
         try
         {
-            _logger.LogDebug("Processing message from topic: {Topic}", context.ConsumerContext.Topic);
-
             // Check if the message is of the expected type
-            if (context.Message.Value is TInput inputMessage)
-            {
-                _logger.LogDebug("Received message of type {Type}: {Message}", 
-                    typeof(TInput).Name, 
-                    System.Text.Json.JsonSerializer.Serialize(inputMessage));
-                
-                // Validate the message
-                if (await _validator.ValidateAsync(inputMessage))
-                {
-                    _logger.LogDebug("Message validated successfully");
-
-                    // Process the message
-                    var outputMessage = await _processor.ProcessAsync(inputMessage);
-                    _logger.LogDebug("Message processed successfully: {OutputMessage}", 
-                        System.Text.Json.JsonSerializer.Serialize(outputMessage));
-
-                    // Get message key from context or create a new one
-                    var messageKey = context.Message.Key ?? Guid.NewGuid().ToString();
-                    _logger.LogDebug("Using message key: {Key}", messageKey);
-
-                    try
-                    {
-                        // Get the producer
-                        _logger.LogDebug("Attempting to get producer with name: {ProducerName}", _settings.ProducerName);
-                        var producer = _producerAccessor.GetProducer(_settings.ProducerName);
-                        
-                        if (producer == null)
-                        {
-                            _logger.LogError("Producer '{ProducerName}' not found", _settings.ProducerName);
-                            throw new InvalidOperationException($"Producer '{_settings.ProducerName}' not found");
-                        }
-
-                        _logger.LogDebug(
-                            "Producer found. Attempting to produce to topic: {Topic} with key: {Key}", 
-                            _settings.ProducerTopic, 
-                            messageKey);
-
-                        // Produce the message to the output topic
-                        await producer.ProduceAsync(_settings.ProducerTopic, messageKey, outputMessage);
-                        
-                        _logger.LogInformation(
-                            "Message produced to topic: {Topic} with key: {Key}",
-                            _settings.ProducerTopic, 
-                            messageKey);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error producing message to topic '{Topic}' with key '{Key}'", 
-                            _settings.ProducerTopic, 
-                            messageKey);
-                    }
-                }
-                else
-                {
-                    _logger.LogWarning("Message validation failed");
-                }
-            }
-            else
+            if (context.Message.Value is not TInput inputMessage)
             {
                 _logger.LogWarning(
                     "Received message with unsupported format. Expected {ExpectedType}, got {ActualType}",
-                    typeof(TInput).Name,
+                    _inputTypeName,
                     context.Message.Value?.GetType().Name ?? "null");
+                await next(context);
+                return;
+            }
+
+            _logger.LogDebug("Processing message of type {Type}", _inputTypeName);
+                
+            // Validate the message
+            if (!await _validator.ValidateAsync(inputMessage))
+            {
+                _logger.LogWarning("Message validation failed");
+                await next(context);
+                return;
+            }
+
+            var outputMessage = await _processor.ProcessAsync(inputMessage);
+            
+            var messageKey = context.Message.Key ?? Guid.NewGuid().ToString();
+
+            try
+            {
+                var producer = _producerAccessor.GetProducer(_settings.ProducerName) 
+                    ?? throw new InvalidOperationException($"Producer '{_settings.ProducerName}' not found");
+                await producer.ProduceAsync(_settings.ProducerTopic, messageKey, outputMessage);
+                
+                _logger.LogInformation(
+                    "Message processed and produced to topic: {Topic}",
+                    _settings.ProducerTopic);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error producing message to topic '{Topic}'", _settings.ProducerTopic);
             }
         }
         catch (Exception ex)
@@ -126,7 +99,6 @@ public class GenericProcessingMiddleware<TInput, TOutput> : IMessageMiddleware
             _logger.LogError(ex, "Error processing message");
         }
 
-        // Always call next middleware in the pipeline
         await next(context);
     }
 }

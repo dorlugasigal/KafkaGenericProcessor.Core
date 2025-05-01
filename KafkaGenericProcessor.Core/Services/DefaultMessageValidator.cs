@@ -30,7 +30,7 @@ public class DefaultMessageValidator<T> : IMessageValidator<T>
     /// <returns>Always returns true</returns>
     public Task<bool> ValidateAsync(T message, CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Default validation passed for message of type {MessageType}", typeof(T).Name);
+        _logger.LogDebug("Using default validator for {MessageType}", typeof(T).Name);
         return Task.FromResult(true);
     }
 }

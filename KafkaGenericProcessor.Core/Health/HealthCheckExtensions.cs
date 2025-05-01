@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using KafkaFlow;
 using KafkaFlow.Producers;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,66 +13,36 @@ namespace KafkaGenericProcessor.Core.Health;
 public static class HealthCheckExtensions
 {
     /// <summary>
-    /// Adds a Kafka health check to the service collection
-    /// </summary>
-    /// <param name="builder">The health checks builder</param>
-    /// <param name="name">The name of the health check</param>
-    /// <param name="producerName">The name of the producer to check</param>
-    /// <param name="healthCheckTopic">The topic to send health check messages to</param>
-    /// <param name="timeout">The timeout for health check operations</param>
-    /// <param name="failureStatus">The status to report when the health check fails</param>
-    /// <param name="tags">A list of tags that can be used to filter health checks</param>
-    /// <returns>The health checks builder for chaining</returns>
-    public static IHealthChecksBuilder AddKafkaHealthCheck(
-        this IHealthChecksBuilder builder,
-        string name = "kafka",
-        string producerName = "producer",
-        string healthCheckTopic = "kafka-health-check",
-        TimeSpan? timeout = null,
-        HealthStatus failureStatus = HealthStatus.Unhealthy,
-        IEnumerable<string>? tags = null)
-    {
-        return builder.Add(new HealthCheckRegistration(
-            name,
-            serviceProvider => new KafkaHealthCheck(
-                serviceProvider.GetRequiredService<IProducerAccessor>(),
-                serviceProvider.GetRequiredService<ILogger<KafkaHealthCheck>>(),
-                producerName,
-                healthCheckTopic,
-                timeout),
-            failureStatus,
-            tags ?? new[] { "ready", "kafka" },
-            TimeSpan.FromSeconds(2)));
-    }
-
-    /// <summary>
     /// Adds comprehensive health checks for a KafkaFlow application
     /// </summary>
     /// <param name="services">The service collection</param>
-    /// <param name="kafkaHealthCheckName">The name of the Kafka health check</param>
+    /// <param name="kafkaCheckName">The name of the Kafka health check</param>
     /// <param name="producerName">The name of the producer to check</param>
     /// <param name="healthCheckTopic">The topic to send health check messages to</param>
-    /// <param name="timeout">The timeout for health check operations</param>
     /// <returns>The health checks builder for chaining</returns>
     public static IHealthChecksBuilder AddKafkaFlowHealthChecks(
         this IServiceCollection services,
-        string kafkaHealthCheckName = "kafka",
+        string kafkaCheckName = "kafka",
         string producerName = "producer",
-        string healthCheckTopic = "kafka-health-check",
-        TimeSpan? timeout = null)
+        string healthCheckTopic = "kafka-health-check")
     {
         return services
             .AddHealthChecks()
             // Liveness check - application is running
-            .AddCheck("liveness", () => HealthCheckResult.Healthy("Application is running"), 
-                tags: new[] { "live" })
+            .AddCheck(
+                "liveness", 
+                () => HealthCheckResult.Healthy("Application is running"), 
+                tags: [  "live" ])
             // Readiness check - Kafka is ready
-            .AddKafkaHealthCheck(
-                kafkaHealthCheckName,
-                producerName,
-                healthCheckTopic,
-                timeout,
-                HealthStatus.Unhealthy,
-                new[] { "ready", "kafka" });
+            .Add(new HealthCheckRegistration(
+                name: kafkaCheckName,
+                factory: sp => new KafkaHealthCheck(
+                    sp.GetRequiredService<IProducerAccessor>(),
+                    sp.GetRequiredService<ILogger<KafkaHealthCheck>>(),
+                    producerName,
+                    healthCheckTopic),
+                failureStatus: HealthStatus.Unhealthy,
+                tags: [ "ready", "kafka"] ,
+                timeout: TimeSpan.FromSeconds(2)));
     }
 }
