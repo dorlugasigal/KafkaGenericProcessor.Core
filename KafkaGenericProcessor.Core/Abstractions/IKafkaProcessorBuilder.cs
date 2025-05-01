@@ -20,6 +20,13 @@ public interface IKafkaProcessorBuilder
     IKafkaProcessorBuilder WithProducerTopic(string topic);
     
     /// <summary>
+    /// Sets the health check topic
+    /// </summary>
+    /// <param name="topic">The topic to use for health checks</param>
+    /// <returns>The builder instance for method chaining</returns>
+    IKafkaProcessorBuilder WithHealthCheckTopic(string topic);
+    
+    /// <summary>
     /// Sets the consumer group ID
     /// </summary>
     /// <param name="groupId">The consumer group ID</param>

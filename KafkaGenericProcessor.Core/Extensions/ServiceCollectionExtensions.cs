@@ -1,78 +1,121 @@
+using System;
+using KafkaFlow;
+using KafkaFlow.Serializer;
 using KafkaGenericProcessor.Core.Abstractions;
 using KafkaGenericProcessor.Core.Configuration;
+using KafkaGenericProcessor.Core.Health;
 using KafkaGenericProcessor.Core.Middlewares;
 using KafkaGenericProcessor.Core.Services;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
-using System;
-using System.Linq;
 
 namespace KafkaGenericProcessor.Core.Extensions;
 
 /// <summary>
-/// Extension methods for service collection to simplify registration of the generic Kafka processor
+/// Extensions for service collection
 /// </summary>
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Adds a generic Kafka processor with the specified input and output message types
+    /// Add a Kafka Generic Processor with a specific input and output type using configuration from appsettings.json
     /// </summary>
+    /// <param name="services">The service collection</param>
+    /// <param name="configuration">The IConfiguration instance</param>
+    /// <param name="sectionName">The section name in configuration containing Kafka settings (default: "Kafka")</param>
     /// <typeparam name="TInput">The input message type</typeparam>
     /// <typeparam name="TOutput">The output message type</typeparam>
-    /// <param name="services">The service collection</param>
-    /// <param name="configureOptions">Action to configure the Kafka processor options</param>
     /// <returns>The service collection for chaining</returns>
     public static IServiceCollection AddKafkaGenericProcessor<TInput, TOutput>(
         this IServiceCollection services,
-        Action<KafkaProcessorOptions> configureOptions)
+        IConfiguration configuration,
+        string sectionName = "Kafka")
+        where TInput : class
+        where TOutput : class
     {
-        if (services == null)
+        // Load the settings early for validation
+        var settingsSection = configuration.GetSection(sectionName);
+        var settings = new KafkaProcessorSettings();
+        settingsSection.Bind(settings);
+        
+        // Validate settings
+        KafkaConfigurationValidator.ValidateKafkaSettings(settings);
+        
+        // Register settings with the Options pattern - use the correct overload
+        services.Configure<KafkaProcessorSettings>(options => 
+            settingsSection.Bind(options));
+        
+        // Register the default message validator if none is registered
+        services.TryAddTransient(typeof(IMessageValidator<TInput>), typeof(DefaultMessageValidator<TInput>));
+        
+        // Setup KafkaFlow
+        services.AddKafka(kafka => 
         {
-            throw new ArgumentNullException(nameof(services));
-        }
+            kafka.UseConsoleLog();
+            
+            kafka.AddCluster(cluster =>
+            {
+                var clusterBuilder = cluster.WithBrokers(settings.Brokers);
 
-        if (configureOptions == null)
-        {
-            throw new ArgumentNullException(nameof(configureOptions));
-        }
+                // Create topics if configured to do so
+                if (settings.CreateTopicsIfNotExist)
+                {
+                    clusterBuilder
+                        .CreateTopicIfNotExists(settings.ConsumerTopic)
+                        .CreateTopicIfNotExists(settings.ProducerTopic)
+                        .CreateTopicIfNotExists(settings.HealthCheckTopic);
+                }
 
-        // Create options and apply configuration
-        var options = new KafkaProcessorOptions();
-        configureOptions(options);
+                // Add producer with the specified name
+                clusterBuilder.AddProducer(settings.ProducerName, producer =>
+                {
+                    producer
+                        .DefaultTopic(settings.ProducerTopic)
+                        .AddMiddlewares(middlewares =>
+                        {
+                            middlewares.AddSerializer<JsonCoreSerializer>();
+                        });
+                });
 
-        // Create settings from options
-        var settings = new KafkaProcessorSettings
-        {
-            Brokers = options.Brokers,
-            ConsumerTopic = options.ConsumerTopic,
-            ProducerTopic = options.ProducerTopic,
-            GroupId = options.GroupId,
-            WorkersCount = options.WorkersCount,
-            BufferSize = options.BufferSize,
-            ProducerName = options.ProducerName
-        };
-
-        // Register settings in DI
-        services.AddSingleton(Options.Create(settings));
-
-        // Register default validator if not registered
-        if (!IsServiceRegistered<IMessageValidator<TInput>>(services))
-        {
-            services.AddTransient<IMessageValidator<TInput>, DefaultMessageValidator<TInput>>();
-        }
-
-        // Build Kafka processor
-        var builder = new KafkaProcessorBuilder<TInput, TOutput>(services, settings);
-        builder.Build();
-
+                // Add consumer with optimized settings
+                clusterBuilder.AddConsumer(consumer =>
+                {
+                    consumer
+                        .Topic(settings.ConsumerTopic)
+                        .WithGroupId(settings.GroupId)
+                        .WithBufferSize(settings.BufferSize)
+                        .WithWorkersCount(settings.WorkersCount)
+                        .WithAutoCommitIntervalMs((int)settings.AutoCommitInterval.TotalMilliseconds)
+                        .AddMiddlewares(middlewares =>
+                        {
+                            // Add JSON deserialization
+                            middlewares.AddDeserializer<JsonCoreDeserializer>();
+                            // Add our generic processing middleware
+                            middlewares.Add<GenericProcessingMiddleware<TInput, TOutput>>();
+                        });
+                });
+            });
+        });
+        
         return services;
     }
-
+    
     /// <summary>
-    /// Checks if a service is already registered in the service collection
+    /// Adds Kafka health checks to the service collection using standard configuration
     /// </summary>
-    private static bool IsServiceRegistered<TService>(IServiceCollection services)
+    /// <param name="services">The service collection</param>
+    /// <returns>The service collection for chaining</returns>
+    public static IServiceCollection AddKafkaGenericProcessorHealthChecks(
+        this IServiceCollection services)
     {
-        return services.Any(s => s.ServiceType == typeof(TService));
+        // Add health checks with fixed configuration
+        services.AddKafkaFlowHealthChecks(
+            kafkaHealthCheckName: "kafka",
+            producerName: "producer",
+            healthCheckTopic: "kafka-health-check",
+            timeout: TimeSpan.FromSeconds(3));
+        
+        return services;
     }
 }

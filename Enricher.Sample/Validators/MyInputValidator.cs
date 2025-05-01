@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Enricher.Sample.Services;
+namespace Enricher.Sample.Validators;
 
 /// <summary>
 /// Custom validator for MyMessage

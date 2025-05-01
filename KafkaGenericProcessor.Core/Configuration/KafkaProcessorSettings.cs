@@ -21,6 +21,11 @@ public class KafkaProcessorSettings
     public string ProducerTopic { get; set; } = string.Empty;
     
     /// <summary>
+    /// The topic to use for health checks
+    /// </summary>
+    public string HealthCheckTopic { get; set; } = "kafka-health-check";
+    
+    /// <summary>
     /// The consumer group ID
     /// </summary>
     public string GroupId { get; set; } = "kafka-generic-processor-group";
@@ -36,7 +41,17 @@ public class KafkaProcessorSettings
     public int BufferSize { get; set; } = 100;
     
     /// <summary>
-    /// Name of the producer (default: "generic-producer")
+    /// Name of the producer (default: "producer")
     /// </summary>
-    public string ProducerName { get; set; } = "generic-producer";
+    public string ProducerName { get; set; } = "producer";
+    
+    /// <summary>
+    /// Whether to create topics if they don't exist (default: true)
+    /// </summary>
+    public bool CreateTopicsIfNotExist { get; set; } = true;
+    
+    /// <summary>
+    /// Auto commit interval for the consumer
+    /// </summary>
+    public TimeSpan AutoCommitInterval { get; set; } = TimeSpan.FromMilliseconds(500);
 }

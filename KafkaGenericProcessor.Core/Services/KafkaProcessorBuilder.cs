@@ -24,11 +24,11 @@ public class KafkaProcessorBuilder<TInput, TOutput> : IKafkaProcessorBuilder
     /// Creates a new instance of KafkaProcessorBuilder
     /// </summary>
     /// <param name="services">Service collection</param>
-    /// <param name="settings">Kafka processor settings</param>
-    public KafkaProcessorBuilder(IServiceCollection services, KafkaProcessorSettings settings)
+    /// <param name="options">Options containing Kafka processor settings</param>
+    public KafkaProcessorBuilder(IServiceCollection services, IOptions<KafkaProcessorSettings> options)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
-        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _settings = options?.Value ?? throw new ArgumentNullException(nameof(options));
     }
 
     /// <summary>
@@ -77,6 +77,15 @@ public class KafkaProcessorBuilder<TInput, TOutput> : IKafkaProcessorBuilder
     }
 
     /// <summary>
+    /// Sets the health check topic for the Kafka processor
+    /// </summary>
+    public IKafkaProcessorBuilder WithHealthCheckTopic(string topic)
+    {
+        _settings.HealthCheckTopic = topic;
+        return this;
+    }
+
+    /// <summary>
     /// Sets the number of worker threads for the Kafka consumer
     /// </summary>
     public IKafkaProcessorBuilder WithWorkers(int count)
@@ -103,7 +112,8 @@ public class KafkaProcessorBuilder<TInput, TOutput> : IKafkaProcessorBuilder
                 // Create topics if needed
                 clusterBuilder
                     .CreateTopicIfNotExists(_settings.ConsumerTopic)
-                    .CreateTopicIfNotExists(_settings.ProducerTopic);
+                    .CreateTopicIfNotExists(_settings.ProducerTopic)
+                    .CreateTopicIfNotExists(_settings.HealthCheckTopic); // Also create health check topic
 
                 // Add producer
                 clusterBuilder.AddProducer(_settings.ProducerName, producer =>
@@ -159,6 +169,11 @@ public class KafkaProcessorBuilder<TInput, TOutput> : IKafkaProcessorBuilder
         if (string.IsNullOrWhiteSpace(_settings.GroupId))
         {
             throw new InvalidOperationException("Consumer group ID must be specified");
+        }
+        
+        if (string.IsNullOrWhiteSpace(_settings.HealthCheckTopic))
+        {
+            _settings.HealthCheckTopic = "kafka-health-check";
         }
     }
 }

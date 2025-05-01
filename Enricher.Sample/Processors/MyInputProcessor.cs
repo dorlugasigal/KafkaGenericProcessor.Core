@@ -3,7 +3,7 @@ using KafkaGenericProcessor.Core.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Enricher.Sample.Services;
+namespace Enricher.Sample.Processors;
 
 /// <summary>
 /// Custom message processor for transforming MyMessage into MyOutputMessage
@@ -18,9 +18,9 @@ public class MyInputProcessor : IMessageProcessor<MyInput, MyOutput>
     /// <returns>The processed output message</returns>
     public Task<MyOutput> ProcessAsync(MyInput input, CancellationToken cancellationToken = default)
     {
-        // Transform the input message to output message
+        // Transform the input message to output message with input data included for tracing
         var output = new MyOutput(
-            ProducedBy: "Enricher.Sample",
+            ProducedBy: $"Enricher.Sample - Input ID: {input.Id}, Content: {input.Content}",
             ProcessedAt: DateTime.UtcNow
         );
 
