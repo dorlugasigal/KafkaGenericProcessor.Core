@@ -13,22 +13,13 @@ namespace KafkaGenericProcessor.Core.Health;
 /// <summary>
 /// A health check for Kafka that verifies connectivity by sending a test message.
 /// </summary>
-public class KafkaHealthCheck : IHealthCheck
+public class KafkaHealthCheck(
+    IProducerAccessor producerAccessor,
+    ILogger<KafkaHealthCheck> logger,
+    KafkaHealthCheckSettings settings)
+    : IHealthCheck
 {
-    private readonly IProducerAccessor _producerAccessor;
-    private readonly ILogger<KafkaHealthCheck> _logger;
-    private readonly KafkaHealthCheckSettings _settings;
     private DateTime _lastSuccessfulCheck = DateTime.MinValue;
-
-    public KafkaHealthCheck(
-        IProducerAccessor producerAccessor,
-        ILogger<KafkaHealthCheck> logger,
-        KafkaHealthCheckSettings settings)
-    {
-        _producerAccessor = producerAccessor;
-        _logger = logger;
-        _settings = settings;
-    }
 
     /// <summary>
     /// Performs a health check by sending a test message to Kafka
@@ -40,12 +31,12 @@ public class KafkaHealthCheck : IHealthCheck
     {
         try
         {
-            var producer = _producerAccessor.GetProducer(_settings.ProducerName);
+            var producer = producerAccessor.GetProducer(settings.ProducerName);
             
             if (producer == null)
             {
-                var message = $"Producer '{_settings.ProducerName}' not found";
-                _logger.LogWarning(message);
+                var message = $"Producer '{settings.ProducerName}' not found";
+                logger.LogWarning(message);
                 return new HealthCheckResult(context.Registration.FailureStatus, message);
             }
 
@@ -55,7 +46,7 @@ public class KafkaHealthCheck : IHealthCheck
                 Id = Guid.NewGuid().ToString()
             };
 
-            await producer.ProduceAsync(_settings.ProducerTopic, healthMessage.Id, healthMessage);
+            await producer.ProduceAsync(settings.ProducerTopic, healthMessage.Id, healthMessage);
             
             _lastSuccessfulCheck = DateTime.UtcNow;
             
@@ -63,13 +54,13 @@ public class KafkaHealthCheck : IHealthCheck
                 new Dictionary<string, object>
                 {
                     { "LastSuccessfulCheck", _lastSuccessfulCheck },
-                    { "HealthCheckTopic", _settings.ProducerTopic },
+                    { "HealthCheckTopic", settings.ProducerTopic },
                     { "MessageId", healthMessage.Id }
                 });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during Kafka health check");
+            logger.LogError(ex, "Error during Kafka health check");
             return new HealthCheckResult(
                 context.Registration.FailureStatus,
                 "Failed to connect to Kafka",
