@@ -21,19 +21,20 @@ namespace KafkaGenericProcessor.Core.Extensions;
 public class KafkaGenericProcessorBuilder
 {
     private readonly IServiceCollection _services;
+    private readonly IConfiguration _configuration;
     private readonly List<ProcessorRegistration> _processors = new();
     private bool _addHealthCheck = false;
     
-    public KafkaGenericProcessorBuilder(IServiceCollection services)
+    public KafkaGenericProcessorBuilder(IServiceCollection services, IConfiguration configuration)
     {
         _services = services;
+        _configuration = configuration;
     }
     
     /// <summary>
     /// Add a processor with input and output types to the builder
     /// </summary>
     public KafkaGenericProcessorBuilder AddProcessor<TInput, TOutput>(
-        IConfiguration configuration,
         string processorKey)
         where TInput : class
         where TOutput : class
@@ -43,15 +44,12 @@ public class KafkaGenericProcessorBuilder
             throw new ArgumentException("Processor key cannot be null or empty", nameof(processorKey));
         }
 
-        var settings = ServiceCollectionExtensions.ConfigureSettings(_services, configuration, processorKey);
+        var settings = ServiceCollectionExtensions.ConfigureSettings(_services, _configuration, processorKey);
         
-        // Register default validator if not already registered with the key
         _services.TryAddKeyedTransient(typeof(IMessageValidator<TInput>), processorKey, typeof(DefaultMessageValidator<TInput>));
 
-        // Register a factory class to help resolve keyed services
         _services.AddSingleton<KeyedServiceResolver<TInput, TOutput>>();
         
-        // Store processor registration for later configuration
         _processors.Add(new ProcessorRegistration
         {
             ProcessorKey = processorKey,
@@ -65,14 +63,17 @@ public class KafkaGenericProcessorBuilder
     /// <summary>
     /// Add health check configuration
     /// </summary>
-    public KafkaGenericProcessorBuilder AddHealthCheck(IConfiguration configuration)
+    public KafkaGenericProcessorBuilder AddHealthCheck()
     {
-        // Register health check settings from configuration
-        _services.Configure<KafkaHealthCheckSettings>(configuration.GetSection("Kafka:Configurations:healthcheck").Bind);
+        var settingsSection = _configuration.GetSection($"Kafka:Configurations:healthcheck");
+        var settings = new KafkaHealthCheckSettings();
+        settingsSection.Bind(settings);
         
-        // Add health check registration with KafkaFlow
+        KafkaConfigurationValidator.ValidateKafkaHealthCheckSettings(settings);
+        
+        _services.Configure<KafkaHealthCheckSettings>("healthcheck", settingsSection.Bind);
+        
         _services.AddKafkaFlowHealthChecks();
-        
         _addHealthCheck = true;
         return this;
     }
@@ -82,10 +83,10 @@ public class KafkaGenericProcessorBuilder
     /// </summary>
     public IServiceCollection Build()
     {
-        if (_processors.Count == 0 && !_addHealthCheck)
-        {
+        if (!ShouldConfigureKafka())
             return _services;
-        }
+
+        var healthSettings = GetHealthCheckSettings();
         
         _services.AddKafka(kafka => 
         {
@@ -93,74 +94,77 @@ public class KafkaGenericProcessorBuilder
             
             kafka.AddCluster(cluster => 
             {
-                // Get unique set of brokers from all processor settings
-                var allBrokers = _processors
-                    .SelectMany(p => p.Settings.Brokers)
-                    .ToList();
-                
-                // Add broker addresses from health check settings if needed
-                if (_addHealthCheck)
-                {
-                    var healthSettings = _services.BuildServiceProvider()
-                        .GetRequiredService<IOptions<KafkaHealthCheckSettings>>().Value;
-                    
-                    if (healthSettings.Brokers != null && healthSettings.Brokers.Any())
-                    {
-                        allBrokers.AddRange(healthSettings.Brokers);
-                    }
-                }
-                
-                // Add client configuration to handle version compatibility issues
-                var clusterBuilder = cluster.WithBrokers(allBrokers.Distinct().ToArray());
+                var allBrokers = GetAllUniqueBrokers(healthSettings);
+                var clusterBuilder = cluster.WithBrokers(allBrokers);
 
-                // Collect all topics that need to be created
-                var topics = _processors
-                    .SelectMany(p => new[] { p.Settings.ConsumerTopic, p.Settings.ProducerTopic })
-                    .Where(t => !string.IsNullOrEmpty(t))
-                    .ToList();
-                
-                // Add health check topic if needed
-                if (_addHealthCheck)
-                {
-                    var healthSettings = _services.BuildServiceProvider()
-                        .GetRequiredService<IOptions<KafkaHealthCheckSettings>>().Value;
-                    
-                    if (!string.IsNullOrEmpty(healthSettings.HealthCheckTopic))
-                    {
-                        topics.Add(healthSettings.HealthCheckTopic);
-                    }
-                }
-
-                foreach (var topicName in topics.Distinct())
-                {
-                    clusterBuilder.CreateTopicIfNotExists(topicName);
-                }
-                
-                // Configure processors
-                foreach (var processor in _processors)
-                {
-                    string producerName = $"{processor.Settings.ProducerName}_{processor.ProcessorKey}";
-                    ConfigureProducer(clusterBuilder, processor.Settings, producerName);
-                    processor.ConfigureAction(clusterBuilder);
-                }
-                
-                // Configure health check producer if needed
-                if (_addHealthCheck)
-                {
-                    var healthSettings = _services.BuildServiceProvider()
-                        .GetRequiredService<IOptions<KafkaHealthCheckSettings>>().Value;
-                    
-                    clusterBuilder.AddProducer(healthSettings.ProducerName, producer =>
-                    {
-                        producer
-                            .DefaultTopic(healthSettings.HealthCheckTopic)
-                            .AddMiddlewares(middlewares => middlewares.AddSerializer<JsonCoreSerializer>());
-                    });
-                }
+                ConfigureTopics(clusterBuilder, healthSettings);
+                ConfigureProcessors(clusterBuilder);
+                ConfigureHealthCheck(clusterBuilder, healthSettings);
             });
         });
         
         return _services;
+    }
+
+    private bool ShouldConfigureKafka() => _processors.Count > 0 || _addHealthCheck;
+
+    private KafkaHealthCheckSettings? GetHealthCheckSettings()
+    {
+        if (!_addHealthCheck)
+            return null;
+            
+        return _services.BuildServiceProvider()
+            .GetRequiredService<IOptions<KafkaHealthCheckSettings>>()
+            .Value;
+    }
+
+    private string[] GetAllUniqueBrokers(KafkaHealthCheckSettings? healthSettings)
+    {
+        var brokers = _processors
+            .SelectMany(p => p.Settings.Brokers);
+
+        if (healthSettings != null)
+            brokers = brokers.Concat(healthSettings.Brokers);
+
+        return brokers.Distinct().ToArray();
+    }
+
+    private void ConfigureTopics(IClusterConfigurationBuilder clusterBuilder, KafkaHealthCheckSettings? healthSettings)
+    {
+        var topics = _processors
+            .SelectMany(p => new[] { p.Settings.ConsumerTopic, p.Settings.ProducerTopic })
+            .Where(t => !string.IsNullOrEmpty(t));
+
+        if (healthSettings != null)
+            topics = topics.Append(healthSettings.ProducerTopic);
+
+        foreach (var topicName in topics.Distinct())
+        {
+            clusterBuilder.CreateTopicIfNotExists(topicName);
+        }
+    }
+
+    private void ConfigureProcessors(IClusterConfigurationBuilder clusterBuilder)
+    {
+        foreach (var processor in _processors)
+        {
+            string producerName = $"{processor.Settings.ProducerName}_{processor.ProcessorKey}";
+            ConfigureProducer(clusterBuilder, processor.Settings, producerName);
+            processor.ConfigureAction(clusterBuilder);
+        }
+    }
+
+    private void ConfigureHealthCheck(IClusterConfigurationBuilder clusterBuilder, KafkaHealthCheckSettings? healthSettings)
+    {
+        if (healthSettings == null)
+            return;
+
+        clusterBuilder.AddProducer(healthSettings.ProducerName, producer =>
+        {
+            producer
+                .DefaultTopic(healthSettings.ProducerTopic)
+                .AddMiddlewares(middlewares => middlewares.AddSerializer<JsonCoreSerializer>());
+        });
     }
     
     /// <summary>

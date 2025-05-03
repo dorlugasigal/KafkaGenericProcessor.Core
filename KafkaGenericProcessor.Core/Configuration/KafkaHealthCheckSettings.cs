@@ -5,7 +5,7 @@ namespace KafkaGenericProcessor.Core.Configuration;
 /// <summary>
 /// Settings for Kafka health checks
 /// </summary>
-public class KafkaHealthCheckSettings
+public record KafkaHealthCheckSettings
 {
     /// <summary>
     /// Array of Kafka broker addresses
@@ -15,7 +15,7 @@ public class KafkaHealthCheckSettings
     /// <summary>
     /// The topic to use for health checks
     /// </summary>
-    public string HealthCheckTopic { get; set; } = "kafka-health-check";
+    public string ProducerTopic { get; set; } = "kafka-health-check";
     
     /// <summary>
     /// Name of the producer for health checks

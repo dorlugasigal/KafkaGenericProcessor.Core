@@ -49,15 +49,13 @@ public class KafkaHealthCheck : IHealthCheck
                 return new HealthCheckResult(context.Registration.FailureStatus, message);
             }
 
-            // Create a health check message with timestamp
-            var healthMessage = new HealthCheckMessage
+            var healthMessage = new
             {
                 Timestamp = DateTime.UtcNow,
                 Id = Guid.NewGuid().ToString()
             };
 
-            // Send the health check message
-            await producer.ProduceAsync(_settings.HealthCheckTopic, healthMessage.Id, healthMessage);
+            await producer.ProduceAsync(_settings.ProducerTopic, healthMessage.Id, healthMessage);
             
             _lastSuccessfulCheck = DateTime.UtcNow;
             
@@ -65,7 +63,7 @@ public class KafkaHealthCheck : IHealthCheck
                 new Dictionary<string, object>
                 {
                     { "LastSuccessfulCheck", _lastSuccessfulCheck },
-                    { "HealthCheckTopic", _settings.HealthCheckTopic },
+                    { "HealthCheckTopic", _settings.ProducerTopic },
                     { "MessageId", healthMessage.Id }
                 });
         }
@@ -82,14 +80,5 @@ public class KafkaHealthCheck : IHealthCheck
                     { "Exception", ex.Message }
                 });
         }
-    }
-
-    /// <summary>
-    /// Class representing a health check message sent to Kafka
-    /// </summary>
-    private class HealthCheckMessage
-    {
-        public string Id { get; set; } = default!;
-        public DateTime Timestamp { get; set; }
     }
 }

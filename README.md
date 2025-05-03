@@ -19,6 +19,7 @@ A flexible, extensible library built on top of KafkaFlow to simplify the develop
   - [Health Check Implementation](#health-check-implementation)
   - [Health Check Configuration](#health-check-configuration)
   - [Health Endpoints](#health-endpoints)
+  - [Integration with Kubernetes](#integration-with-kubernetes)
 - [Extensibility Points](#extensibility-points)
 - [Advanced Scenarios](#advanced-scenarios)
 - [Examples](#examples)
@@ -34,6 +35,7 @@ The library enables:
 - **Transformation** - Process and enrich messages before sending to output topics
 - **Health monitoring** - Integration with .NET's health check system
 - **Fluent Configuration** - Simple builder pattern for clean configuration
+- **Multiple processor pipelines** - Configure multiple processors with different input/output types and configurations
 
 ## Architecture
 
@@ -45,6 +47,8 @@ The core architecture consists of:
 2. **Validators** - Components that verify if a message should be processed
 3. **Processors** - Business logic that transforms input messages to output messages
 4. **Producers** - Components that send processed messages to output topics
+
+This architecture allows for clean separation of concerns and makes it easy to test and maintain individual components.
 
 ## Flow Diagrams
 
@@ -66,6 +70,7 @@ flowchart LR
 classDiagram
     class KafkaGenericProcessorBuilder {
         +AddProcessor<TInput, TOutput>(configuration, key)
+        +AddHealthCheck()
         +Build()
     }
     
@@ -109,8 +114,9 @@ sequenceDiagram
     
     App->>SC: AddKafkaGenericProcessors()
     SC-->>Builder: returns builder
-    App->>Builder: AddProcessor<TInput, TOutput>(config, "key1")
-    App->>Builder: AddProcessor<TInput2, TOutput2>(config, "key2")
+    App->>Builder: AddProcessor<TInput, TOutput>("key1")
+    App->>Builder: AddProcessor<TInput2, TOutput2>("key2")
+    App->>Builder: AddHealthCheck()
     App->>Builder: Build()
     Builder->>SC: RegisterServices()
     Builder->>KF: ConfigureKafkaFlow()
@@ -143,11 +149,23 @@ public interface IMessageValidator<T>
 
 ### GenericProcessingMiddleware
 
-KafkaFlow middleware that orchestrates the validation, processing, and producing of messages.
+KafkaFlow middleware that orchestrates the validation, processing, and producing of messages. It handles:
+- Type checking of incoming messages
+- Validation using the configured validator
+- Message transformation using the processor
+- Producing the output message to the configured topic
+- Error handling and logging
 
 ### KafkaGenericProcessorBuilder
 
-Fluent API for configuring multiple processors in a clean, readable manner.
+Fluent API for configuring multiple processors in a clean, readable manner. The builder allows:
+- Adding multiple processor pipelines with different configurations
+- Configuring health checks
+- Setting up producers and consumers
+
+### KeyedServiceResolver
+
+Helper class that resolves keyed services for processors and validators. It bridges the gap between dependency injection and the middleware.
 
 ## Installation
 
@@ -184,11 +202,34 @@ Configure your `appsettings.json` with the following structure:
         "BufferSize": 100,
         "WorkersCount": 10,
         "AutoCommitInterval": "00:00:05"
+      },
+      "healthcheck": {
+        "Brokers": ["kafka:9092"],
+        "ProducerName": "health_producer",
+        "ProducerTopic": "kafka-health-check"
       }
     }
   }
 }
 ```
+
+### KafkaProcessorSettings Default Values
+
+The `KafkaProcessorSettings` class provides default values for most configuration options. You only need to specify the values that differ from the defaults in your `appsettings.json`.
+
+| Property | Default Value | Description |
+|----------|--------------|-------------|
+| `Brokers` | `[]` (empty array) | Array of Kafka broker addresses (required) |
+| `ConsumerTopic` | `""` (empty string) | The topic to consume messages from (required) |
+| `ProducerTopic` | `""` (empty string) | The topic to produce messages to (required) |
+| `GroupId` | `"kafka-generic-processor-group"` | The consumer group ID |
+| `WorkersCount` | `20` | Number of worker threads for the consumer |
+| `BufferSize` | `100` | Buffer size for the consumer |
+| `ProducerName` | `"producer"` | Name of the producer |
+| `CreateTopicsIfNotExist` | `true` | Whether to create topics if they don't exist |
+| `AutoCommitInterval` | `00:00:00.500` (500ms) | Auto commit interval for the consumer |
+
+> **Note:** While there are default values for most settings, you should always specify `Brokers`, `ConsumerTopic`, and `ProducerTopic` as these are essential for connecting to Kafka and processing messages.
 
 ### Matching Configuration Keys
 
@@ -206,18 +247,6 @@ This key-based approach provides several benefits:
 
 #### Key Binding Example
 
-Here's a diagram showing the relationship between these elements:
-
-```mermaid
-graph TD
-    A[appsettings.json<br>Kafka:Configurations:mykey1] -->|Same Key| B[AddProcessor<TInput, TOutput><br>config, "mykey1"]
-    B -->|Same Key| C[AddKeyedTransient<br>IMessageProcessor, "mykey1"]
-    B -->|Same Key| D[AddKeyedTransient<br>IMessageValidator, "mykey1"]
-    A -.->|References| E[ConsumerTopic: "input-topic"]
-    A -.->|References| F[ProducerTopic: "output-topic"]
-    C -.->|Processes Messages| E
-    C -.->|Produces To| F
-```
 
 #### Code Example of Key Matching
 
@@ -234,8 +263,8 @@ builder.Services.AddKeyedTransient<IMessageProcessor<OrderInput, OrderOutput>, O
 builder.Services.AddKeyedTransient<IMessageValidator<OrderInput>, OrderValidator>("order-processor");
 
 // 3. Configure processor with the same key
-builder.Services.AddKafkaGenericProcessors()
-    .AddProcessor<OrderInput, OrderOutput>(builder.Configuration, "order-processor")
+builder.Services.AddKafkaGenericProcessors(builder.Configuration)
+    .AddProcessor<OrderInput, OrderOutput>("order-processor")
     .Build();
 ```
 
@@ -296,17 +325,15 @@ public class MyInputValidator : IMessageValidator<MyInput>
 > IMPORTANT: the keyed services name that you register must match the Kafka Configuration keys in you `appsettings.json` file
 
 ```csharp
-// Register your processor and validator with the key "enrich1"
+// Register your processor and validator with the key "processorKey1"
 builder.Services.AddKeyedTransient<IMessageProcessor<MyInput, MyOutput>, MyInputProcessor>("processorKey1");
 builder.Services.AddKeyedTransient<IMessageValidator<MyInput>, MyInputValidator>("processorKey1");
 
 // Configure the Kafka processor
-builder.Services.AddKafkaGenericProcessors()
-    .AddProcessor<MyInput, MyOutput>(builder.Configuration, "processorKey1")
+builder.Services.AddKafkaGenericProcessors(builder.Configuration)
+    .AddProcessor<MyInput, MyOutput>("processorKey1")
+    .AddHealthCheck()
     .Build();
-
-// Add health checks
-builder.Services.AddKafkaGenericProcessorHealthChecks();
 
 // In the app configuration section:
 var kafkaBus = app.Services.CreateKafkaBus();
@@ -318,9 +345,9 @@ await kafkaBus.StartAsync();
 The fluent API makes it easy to configure multiple processors:
 
 ```csharp
-builder.Services.AddKafkaGenericProcessors()
-    .AddProcessor<MyInput, MyOutput>(builder.Configuration, "processorKey1")
-    .AddProcessor<MyInput, MyOutput>(builder.Configuration, "processorKey2")
+builder.Services.AddKafkaGenericProcessors(builder.Configuration)
+    .AddProcessor<MyInput, MyOutput>("processorKey1")
+    .AddProcessor<MyInput, MyOutput>("processorKey2")
     .Build();
 ```
 
@@ -342,7 +369,7 @@ public class MyInputValidator2 : IMessageValidator<MyInput>
 }
 
 // Register with key
-builder.Services.AddKeyedTransient<IMessageValidator<MyInput>, MyInputValidator2>("processorKey1");
+builder.Services.AddKeyedTransient<IMessageValidator<MyInput>, MyInputValidator2>("processorKey2");
 ```
 
 ## Health Checks
@@ -373,7 +400,7 @@ sequenceDiagram
 
 ### Health Check Configuration
 
-The health checks are automatically configured when you call `AddKafkaGenericProcessorHealthChecks()`. Under the hood, this method:
+The health checks are automatically configured when you call `AddHealthCheck()`. Under the hood, this method:
 
 1. Creates a dedicated health check topic (`kafka-health-check` by default)
 2. Configures a producer for sending health check messages
@@ -440,24 +467,30 @@ app.MapHealthChecks("/health", new HealthCheckOptions
 ```json
 {
   "status": "Healthy",
-  "totalDuration": "00:00:00.1337001",
+  "totalDuration": "00:00:00.0095875",
   "entries": {
-    "kafka-connection": {
-      "data": {
-        "brokers": ["kafka:9092"]
-      },
-      "duration": "00:00:00.0456789",
+    "liveness": {
+      "data": {},
+      "description": "Application is running",
+      "duration": "00:00:00.0000763",
       "status": "Healthy",
-      "tags": ["ready", "live"]
+      "tags": [
+        "live"
+      ]
     },
-    "kafka-producer": {
+    "kafka": {
       "data": {
-        "topic": "kafka-health-check",
-        "producerName": "producer"
+        "LastSuccessfulCheck": "2025-05-03T20:15:29.2704533Z",
+        "HealthCheckTopic": "kafka-health-check",
+        "MessageId": "18bf1a3b-21ad-4c6f-9501-b200cd36b556"
       },
-      "duration": "00:00:00.0880212",
+      "description": "Kafka connection is healthy",
+      "duration": "00:00:00.0091000",
       "status": "Healthy",
-      "tags": ["ready"]
+      "tags": [
+        "ready",
+        "kafka"
+      ]
     }
   }
 }
@@ -498,6 +531,17 @@ The GenericProcessingMiddleware includes error handling for both processing and 
 2. If processing throws an exception, it's caught and logged
 3. If producing the output message fails, the error is caught and logged
 
+
+### Producer Name Customization
+
+The library automatically creates producer names based on the processor key for better isolation. The naming convention is:
+
+```
+{settings.ProducerName}_{processorKey}
+```
+
+For example, with ProducerName="producer" and processorKey="enrich1", the actual producer name would be "producer_enrich1".
+
 ## Examples
 
 See the sample project in this repository for complete working examples:
@@ -506,7 +550,7 @@ See the sample project in this repository for complete working examples:
 
 ### Testing Producers
 
-You can use the test endpoints to manually trigger message production for testing:
+You can use test endpoints to manually trigger message production for testing:
 
 ```csharp
 // Example test endpoint for processor1

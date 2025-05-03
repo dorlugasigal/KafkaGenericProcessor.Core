@@ -12,9 +12,6 @@ using HealthChecks.UI.Client;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Register health check settings from configuration
-builder.Services.Configure<KafkaHealthCheckSettings>(builder.Configuration.GetSection("Kafka:Configurations:healthcheck"));
-
 // Register keyed services for both processors and validators
 builder.Services.AddKeyedTransient<IMessageProcessor<MyInput, MyOutput>, MyInputProcessor>("enrich1");
 builder.Services.AddKeyedTransient<IMessageValidator<MyInput>, MyInputValidator>("enrich1");
@@ -23,10 +20,11 @@ builder.Services.AddKeyedTransient<IMessageProcessor<MyInput, MyOutput>, MyInput
 builder.Services.AddKeyedTransient<IMessageValidator<MyInput>, MyInputValidator2>("enrich2");
 
 // Use the builder pattern to register processors and health check in a simple fluent API
-builder.Services.AddKafkaGenericProcessors()
-    .AddProcessor<MyInput, MyOutput>(builder.Configuration, "enrich1")
-    .AddProcessor<MyInput, MyOutput>(builder.Configuration, "enrich2")
-    .AddHealthCheck(builder.Configuration)  // Simple health check with configuration
+builder.Services
+    .AddKafkaGenericProcessors(builder.Configuration)
+    .AddProcessor<MyInput, MyOutput>("enrich1")
+    .AddProcessor<MyInput, MyOutput>("enrich2")
+    .AddHealthCheck()
     .Build();
 
 var app = builder.Build();
@@ -86,26 +84,6 @@ app.MapGet("/test-input-enrich2", async (IProducerAccessor producerAccessor, IOp
     }
     var result = await producer.ProduceAsync(kafkaSettings.ConsumerTopic, Guid.NewGuid().ToString(), testMessage);
     return Results.Ok(new { Result = result, Topic = kafkaSettings.ConsumerTopic, Producer = producerName });
-});
-
-// Test endpoint for health check producer
-app.MapGet("/test-health-producer", async (IProducerAccessor producerAccessor, IOptions<KafkaHealthCheckSettings> healthSettings) =>
-{
-    var producer = producerAccessor.GetProducer(healthSettings.Value.ProducerName);
-    
-    if (producer == null)
-    {
-        return Results.Problem($"Health check producer '{healthSettings.Value.ProducerName}' not found.");
-    }
-    
-    var message = new { Timestamp = DateTime.UtcNow, Message = "Health check test" };
-    var result = await producer.ProduceAsync(healthSettings.Value.HealthCheckTopic, Guid.NewGuid().ToString(), message);
-    
-    return Results.Ok(new { 
-        Result = result, 
-        Topic = healthSettings.Value.HealthCheckTopic, 
-        Producer = healthSettings.Value.ProducerName
-    });
 });
 
 var kafkaBus = app.Services.CreateKafkaBus();

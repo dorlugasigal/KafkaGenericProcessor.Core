@@ -15,33 +15,11 @@ public static class ServiceCollectionExtensions
     /// </summary>
     /// <param name="services">The service collection</param>
     /// <returns>A builder instance to configure processors</returns>
-    public static KafkaGenericProcessorBuilder AddKafkaGenericProcessors(this IServiceCollection services)
+    public static KafkaGenericProcessorBuilder AddKafkaGenericProcessors(this IServiceCollection services, IConfiguration configuration)
     {
-        return new KafkaGenericProcessorBuilder(services);
+        return new KafkaGenericProcessorBuilder(services, configuration);
     }
     
-    /// <summary>
-    /// Add a Kafka Generic Processor with a specific input and output type using configuration from appsettings.json
-    /// </summary>
-    /// <param name="services">The service collection</param>
-    /// <param name="configuration">The IConfiguration instance</param>
-    /// <param name="processorKey">The key for keyed services, also used as suffix for section name in configuration</param>
-    /// <typeparam name="TInput">The input message type</typeparam>
-    /// <typeparam name="TOutput">The output message type</typeparam>
-    /// <returns>The service collection for chaining</returns>
-    public static IServiceCollection AddKafkaGenericProcessor<TInput, TOutput>(
-        this IServiceCollection services,
-        IConfiguration configuration,
-        string processorKey)
-        where TInput : class
-        where TOutput : class
-    {
-        // This maintains backward compatibility by using the builder pattern internally
-        return services.AddKafkaGenericProcessors()
-            .AddProcessor<TInput, TOutput>(configuration, processorKey)
-            .Build();
-    }
-
     /// <summary>
     /// Configures Kafka processor settings from configuration
     /// </summary>
