@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  kafka:
+    environment:
+      # Configure Kafka with both internal and external listeners
+      # PLAINTEXT: for container-to-container (kafka:9092)
+      # PLAINTEXT_HOST: for host-to-container (localhost:29092)
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
+    ports:
+      - "29092:29092"  # Expose the PLAINTEXT_HOST port for applications on the host
+      - "9092:9092"    # Expose the PLAINTEXT port for internal Docker network
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "kafka:9092", "--list"]
+
+  kafka-ui:
+    environment:
+      # Connect using the internal Docker network
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092

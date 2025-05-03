@@ -8,20 +8,26 @@ using KafkaGenericProcessor.Core.Extensions;
 using KafkaGenericProcessor.Core.Configuration;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
-using System.Text.Json;
-using System.Net.Mime;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
 using HealthChecks.UI.Client;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Register our custom message processor and validator
-builder.Services.AddTransient<IMessageProcessor<MyInput, MyOutput>, MyInputProcessor>();
-builder.Services.AddTransient<IMessageValidator<MyInput>, MyInputValidator>();
+// Register health check settings from configuration
+builder.Services.Configure<KafkaHealthCheckSettings>(builder.Configuration.GetSection("Kafka:Configurations:healthcheck"));
 
-// Add the Kafka Generic Processor using the centralized configuration from appsettings.json
-builder.Services.AddKafkaGenericProcessor<MyInput, MyOutput>(builder.Configuration);
-builder.Services.AddKafkaGenericProcessorHealthChecks();
+// Register keyed services for both processors and validators
+builder.Services.AddKeyedTransient<IMessageProcessor<MyInput, MyOutput>, MyInputProcessor>("enrich1");
+builder.Services.AddKeyedTransient<IMessageValidator<MyInput>, MyInputValidator>("enrich1");
+
+builder.Services.AddKeyedTransient<IMessageProcessor<MyInput, MyOutput>, MyInputProcessor2>("enrich2");
+builder.Services.AddKeyedTransient<IMessageValidator<MyInput>, MyInputValidator2>("enrich2");
+
+// Use the builder pattern to register processors and health check in a simple fluent API
+builder.Services.AddKafkaGenericProcessors()
+    .AddProcessor<MyInput, MyOutput>(builder.Configuration, "enrich1")
+    .AddProcessor<MyInput, MyOutput>(builder.Configuration, "enrich2")
+    .AddHealthCheck(builder.Configuration)  // Simple health check with configuration
+    .Build();
 
 var app = builder.Build();
 
@@ -46,31 +52,61 @@ app.MapHealthChecks("/health", new HealthCheckOptions
     ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
 });
 
-app.MapGet("/test-input", async (IProducerAccessor producerAccessor, IOptions<KafkaProcessorSettings> options, ILogger<Program> logger) =>
+// Test endpoints for enrich1 processor
+app.MapGet("/test-input-enrich1", async (IProducerAccessor producerAccessor, IOptionsMonitor<KafkaProcessorSettings> optionsMonitor, ILogger<Program> logger) =>
 {
-    var kafkaSettings = options.Value;
-    var testMessage = new MyInput(Guid.NewGuid().ToString(), $"Test message created at {DateTime.Now}");
-    var producer = producerAccessor.GetProducer(kafkaSettings.ProducerName);
+    var kafkaSettings = optionsMonitor.Get("enrich1");
+    var testMessage = new MyInput("A123", $"This message is handled by enrich1 processor at {DateTime.Now}");
+    
+    // Use the named producer based on the processor key
+    string producerName = $"{kafkaSettings.ProducerName}_enrich1";
+    var producer = producerAccessor.GetProducer(producerName);
+    
     if (producer == null)
     {
-        return Results.Problem($"Producer '{kafkaSettings.ProducerName}' not found. Check your Kafka configuration.");
+        return Results.Problem($"Producer '{producerName}' not found. Check your Kafka configuration.");
     }
     var result = await producer.ProduceAsync(kafkaSettings.ConsumerTopic, Guid.NewGuid().ToString(), testMessage);
-    return Results.Ok(new { Result = result, Topic = kafkaSettings.ConsumerTopic });});
-
-app.MapGet("/test-output", async (IProducerAccessor producerAccessor, IOptions<KafkaProcessorSettings> options, ILogger<Program> logger) =>
-{
-    var kafkaSettings = options.Value;
-    var testOutput = new MyOutput(ProducedBy: $"Direct test from endpoint at {DateTime.Now}", ProcessedAt: DateTime.UtcNow);
-    var producer = producerAccessor.GetProducer(kafkaSettings.ProducerName);
-    if (producer == null)
-    {
-        return Results.Problem($"Producer '{kafkaSettings.ProducerName}' not found. Check your Kafka configuration.");
-    }
-    var result = await producer.ProduceAsync(kafkaSettings.ProducerTopic, Guid.NewGuid().ToString(), testOutput);
-    return Results.Ok(new { Result = result, Topic = kafkaSettings.ProducerTopic });
+    return Results.Ok(new { Result = result, Topic = kafkaSettings.ConsumerTopic, Producer = producerName });
 });
 
+// Test endpoints for enrich2 processor with validation that requires min length and letter ID
+app.MapGet("/test-input-enrich2", async (IProducerAccessor producerAccessor, IOptionsMonitor<KafkaProcessorSettings> optionsMonitor, ILogger<Program> logger) =>
+{
+    var kafkaSettings = optionsMonitor.Get("enrich2");
+    var testMessage = new MyInput("B456", $"This message with more than 10 characters is handled by enrich2 processor at {DateTime.Now}");
+    
+    // Use the named producer based on the processor key
+    string producerName = $"{kafkaSettings.ProducerName}_enrich2";
+    var producer = producerAccessor.GetProducer(producerName);
+    
+    if (producer == null)
+    {
+        return Results.Problem($"Producer '{producerName}' not found. Check your Kafka configuration.");
+    }
+    var result = await producer.ProduceAsync(kafkaSettings.ConsumerTopic, Guid.NewGuid().ToString(), testMessage);
+    return Results.Ok(new { Result = result, Topic = kafkaSettings.ConsumerTopic, Producer = producerName });
+});
+
+// Test endpoint for health check producer
+app.MapGet("/test-health-producer", async (IProducerAccessor producerAccessor, IOptions<KafkaHealthCheckSettings> healthSettings) =>
+{
+    var producer = producerAccessor.GetProducer(healthSettings.Value.ProducerName);
+    
+    if (producer == null)
+    {
+        return Results.Problem($"Health check producer '{healthSettings.Value.ProducerName}' not found.");
+    }
+    
+    var message = new { Timestamp = DateTime.UtcNow, Message = "Health check test" };
+    var result = await producer.ProduceAsync(healthSettings.Value.HealthCheckTopic, Guid.NewGuid().ToString(), message);
+    
+    return Results.Ok(new { 
+        Result = result, 
+        Topic = healthSettings.Value.HealthCheckTopic, 
+        Producer = healthSettings.Value.ProducerName
+    });
+});
 
 var kafkaBus = app.Services.CreateKafkaBus();
 await kafkaBus.StartAsync();

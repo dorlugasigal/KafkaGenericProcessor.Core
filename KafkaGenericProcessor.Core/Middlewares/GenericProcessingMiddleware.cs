@@ -5,7 +5,6 @@ using KafkaGenericProcessor.Core.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
-using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace KafkaGenericProcessor.Core.Middlewares;
@@ -19,12 +18,14 @@ public class GenericProcessingMiddleware<TInput, TOutput>(
     IMessageProcessor<TInput, TOutput> processor,
     IMessageValidator<TInput> validator,
     IProducerAccessor producerAccessor,
-    IOptions<KafkaProcessorSettings> settings,
-    ILogger<GenericProcessingMiddleware<TInput, TOutput>> logger) : IMessageMiddleware
+    KafkaProcessorSettings settings,
+    ILogger<GenericProcessingMiddleware<TInput, TOutput>> logger,
+    string? producerName = null) : IMessageMiddleware
+    where TInput : class
+    where TOutput : class
 {
-    private readonly KafkaProcessorSettings _settings = settings.Value;
+    private readonly string _effectiveProducerName = producerName ?? settings.ProducerName;
     private readonly string _inputTypeName = typeof(TInput).Name;
-
 
     /// <summary>
     /// Processes a message using the configured processor and validator
@@ -44,9 +45,9 @@ public class GenericProcessingMiddleware<TInput, TOutput>(
                 return;
             }
 
-            logger.LogDebug("Processing message of type {Type}", _inputTypeName);
+            logger.LogDebug("Processing message of type {Type} with producer {ProducerName}", 
+                _inputTypeName, _effectiveProducerName);
                 
-            // Validate the message
             if (!await validator.ValidateAsync(inputMessage))
             {
                 logger.LogWarning("Message validation failed");
@@ -60,22 +61,24 @@ public class GenericProcessingMiddleware<TInput, TOutput>(
 
             try
             {
-                var producer = producerAccessor.GetProducer(_settings.ProducerName) 
-                    ?? throw new InvalidOperationException($"Producer '{_settings.ProducerName}' not found");
-                await producer.ProduceAsync(_settings.ProducerTopic, messageKey, outputMessage);
+                var producer = producerAccessor.GetProducer(_effectiveProducerName) 
+                    ?? throw new InvalidOperationException($"Producer '{_effectiveProducerName}' not found");
+                await producer.ProduceAsync(settings.ProducerTopic, messageKey, outputMessage);
                 
                 logger.LogInformation(
-                    "Message processed and produced to topic: {Topic}",
-                    _settings.ProducerTopic);
+                    "Message processed and produced to topic: {Topic} using producer: {ProducerName}",
+                    settings.ProducerTopic,
+                    _effectiveProducerName);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error producing message to topic '{Topic}'", _settings.ProducerTopic);
+                logger.LogError(ex, "Error producing message to topic '{Topic}' with producer '{ProducerName}'", 
+                    settings.ProducerTopic, _effectiveProducerName);
             }
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error processing message");
+            logger.LogError(ex, "Error processing message with producer '{ProducerName}'", _effectiveProducerName);
         }
 
         await next(context);

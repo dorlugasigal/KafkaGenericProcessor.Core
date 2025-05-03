@@ -1,9 +1,11 @@
 using System;
 using KafkaFlow;
 using KafkaFlow.Producers;
+using KafkaGenericProcessor.Core.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace KafkaGenericProcessor.Core.Health;
 
@@ -16,15 +18,8 @@ public static class HealthCheckExtensions
     /// Adds comprehensive health checks for a KafkaFlow application
     /// </summary>
     /// <param name="services">The service collection</param>
-    /// <param name="kafkaCheckName">The name of the Kafka health check</param>
-    /// <param name="producerName">The name of the producer to check</param>
-    /// <param name="healthCheckTopic">The topic to send health check messages to</param>
     /// <returns>The health checks builder for chaining</returns>
-    public static IHealthChecksBuilder AddKafkaFlowHealthChecks(
-        this IServiceCollection services,
-        string kafkaCheckName = "kafka",
-        string producerName = "producer",
-        string healthCheckTopic = "kafka-health-check")
+    public static IHealthChecksBuilder AddKafkaFlowHealthChecks(this IServiceCollection services)
     {
         return services
             .AddHealthChecks()
@@ -35,14 +30,13 @@ public static class HealthCheckExtensions
                 tags: [  "live" ])
             // Readiness check - Kafka is ready
             .Add(new HealthCheckRegistration(
-                name: kafkaCheckName,
+                name: "kafka",
                 factory: sp => new KafkaHealthCheck(
                     sp.GetRequiredService<IProducerAccessor>() ?? throw new ArgumentNullException(nameof(IProducerAccessor)),
                     sp.GetRequiredService<ILogger<KafkaHealthCheck>>() ?? throw new ArgumentNullException(nameof(ILogger<KafkaHealthCheck>)),
-                    producerName,
-                    healthCheckTopic),
+                    sp.GetRequiredService<IOptions<KafkaHealthCheckSettings>>().Value),
                 failureStatus: HealthStatus.Unhealthy,
-                tags: [ "ready", "kafka"] ,
+                tags: [ "ready", "kafka" ],
                 timeout: TimeSpan.FromSeconds(2)));
     }
 }
