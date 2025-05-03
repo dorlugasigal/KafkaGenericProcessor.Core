@@ -1,7 +1,5 @@
 using KafkaGenericProcessor.Core.Abstractions;
 using Microsoft.Extensions.Logging;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace KafkaGenericProcessor.Core.Services;
 

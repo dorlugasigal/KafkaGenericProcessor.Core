@@ -43,11 +43,6 @@ internal static class KafkaConfigurationValidator
         {
             errors.Add("Consumer group ID is not configured.");
         }
-
-        if (string.IsNullOrWhiteSpace(settings.HealthCheckTopic))
-        {
-            errors.Add("Health check topic is not configured.");
-        }
         
         if (string.IsNullOrWhiteSpace(settings.ProducerName))
         {
@@ -59,5 +54,35 @@ internal static class KafkaConfigurationValidator
             throw new ApplicationException($"Invalid Kafka configuration: {string.Join(", ", errors)}");
         }
         
+    }
+
+    internal static void ValidateKafkaHealthCheckSettings(KafkaHealthCheckSettings settings)
+    {
+        if (settings == null)
+        {
+            throw new ArgumentNullException(nameof(settings), "Kafka health check settings cannot be null");
+        }
+
+        var errors = new List<string>();
+
+        if (settings.Brokers == null || settings.Brokers.Length == 0)
+        {
+            errors.Add("Kafka health check brokers are not configured.");
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.ProducerTopic))
+        {
+            errors.Add("Kafka health check topic is not configured.");
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.ProducerName))
+        {
+            errors.Add("Health check producer name is not configured.");
+        }
+
+        if (errors.Any())
+        {
+            throw new ApplicationException($"Invalid Kafka health check configuration: {string.Join(", ", errors)}");
+        }
     }
 }

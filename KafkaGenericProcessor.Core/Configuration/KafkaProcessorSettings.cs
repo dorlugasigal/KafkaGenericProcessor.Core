@@ -21,11 +21,6 @@ public class KafkaProcessorSettings
     public string ProducerTopic { get; set; } = string.Empty;
     
     /// <summary>
-    /// The topic to use for health checks
-    /// </summary>
-    public string HealthCheckTopic { get; set; } = "kafka-health-check";
-    
-    /// <summary>
     /// The consumer group ID
     /// </summary>
     public string GroupId { get; set; } = "kafka-generic-processor-group";
@@ -33,7 +28,7 @@ public class KafkaProcessorSettings
     /// <summary>
     /// Number of worker threads (default: 1)
     /// </summary>
-    public int WorkersCount { get; set; } = 1;
+    public int WorkersCount { get; set; } = 20;
     
     /// <summary>
     /// Buffer size for the consumer (default: 100)
