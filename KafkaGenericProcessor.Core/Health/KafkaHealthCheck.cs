@@ -10,9 +10,6 @@ using Microsoft.Extensions.Logging;
 
 namespace KafkaGenericProcessor.Core.Health;
 
-/// <summary>
-/// A health check for Kafka that verifies connectivity by sending a test message.
-/// </summary>
 public class KafkaHealthCheck(
     IProducerAccessor producerAccessor,
     ILogger<KafkaHealthCheck> logger,
@@ -21,12 +18,6 @@ public class KafkaHealthCheck(
 {
     private DateTime _lastSuccessfulCheck = DateTime.MinValue;
 
-    /// <summary>
-    /// Performs a health check by sending a test message to Kafka
-    /// </summary>
-    /// <param name="context">The health check context</param>
-    /// <param name="cancellationToken">The cancellation token</param>
-    /// <returns>The health check result</returns>
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
         try

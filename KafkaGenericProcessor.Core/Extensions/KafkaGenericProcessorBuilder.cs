@@ -2,38 +2,21 @@ using KafkaFlow;
 using KafkaFlow.Configuration;
 using KafkaFlow.Producers;
 using KafkaFlow.Serializer;
-using KafkaGenericProcessor.Core.Abstractions;
 using KafkaGenericProcessor.Core.Configuration;
 using KafkaGenericProcessor.Core.Health;
 using KafkaGenericProcessor.Core.Middlewares;
-using KafkaGenericProcessor.Core.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace KafkaGenericProcessor.Core.Extensions;
 
-/// <summary>
-/// Builder for configuring multiple Kafka Generic Processors in a fluent API
-/// </summary>
-public class KafkaGenericProcessorBuilder
+public class KafkaGenericProcessorBuilder(IServiceCollection services, IConfiguration configuration)
 {
-    private readonly IServiceCollection _services;
-    private readonly IConfiguration _configuration;
     private readonly List<ProcessorRegistration> _processors = new();
-    private bool _addHealthCheck = false;
-    
-    public KafkaGenericProcessorBuilder(IServiceCollection services, IConfiguration configuration)
-    {
-        _services = services;
-        _configuration = configuration;
-    }
-    
-    /// <summary>
-    /// Add a processor with input and output types to the builder
-    /// </summary>
+    private bool _addHealthCheck;
+
     public KafkaGenericProcessorBuilder AddProcessor<TInput, TOutput>(
         string processorKey)
         where TInput : class
@@ -44,11 +27,9 @@ public class KafkaGenericProcessorBuilder
             throw new ArgumentException("Processor key cannot be null or empty", nameof(processorKey));
         }
 
-        var settings = ServiceCollectionExtensions.ConfigureSettings(_services, _configuration, processorKey);
-        
-        _services.TryAddKeyedTransient(typeof(IMessageValidator<TInput>), processorKey, typeof(DefaultMessageValidator<TInput>));
+        var settings = ServiceCollectionExtensions.ConfigureSettings(services, configuration, processorKey);
 
-        _services.AddSingleton<KeyedServiceResolver<TInput, TOutput>>();
+        services.AddSingleton<KeyedServiceResolver<TInput, TOutput>>();
         
         _processors.Add(new ProcessorRegistration
         {
@@ -60,35 +41,29 @@ public class KafkaGenericProcessorBuilder
         return this;
     }
 
-    /// <summary>
-    /// Add health check configuration
-    /// </summary>
     public KafkaGenericProcessorBuilder AddHealthCheck()
     {
-        var settingsSection = _configuration.GetSection($"Kafka:Configurations:healthcheck");
+        var settingsSection = configuration.GetSection($"Kafka:Configurations:healthcheck");
         var settings = new KafkaHealthCheckSettings();
         settingsSection.Bind(settings);
         
         KafkaConfigurationValidator.ValidateKafkaHealthCheckSettings(settings);
         
-        _services.Configure<KafkaHealthCheckSettings>("healthcheck", settingsSection.Bind);
+        services.Configure<KafkaHealthCheckSettings>("healthcheck", settingsSection.Bind);
         
-        _services.AddKafkaFlowHealthChecks();
+        services.AddKafkaFlowHealthChecks();
         _addHealthCheck = true;
         return this;
     }
 
-    /// <summary>
-    /// Build the Kafka configuration and register it with the service collection
-    /// </summary>
     public IServiceCollection Build()
     {
         if (!ShouldConfigureKafka())
-            return _services;
+            return services;
 
         var healthSettings = GetHealthCheckSettings();
         
-        _services.AddKafka(kafka => 
+        services.AddKafka(kafka => 
         {
             kafka.UseConsoleLog();
             
@@ -103,7 +78,7 @@ public class KafkaGenericProcessorBuilder
             });
         });
         
-        return _services;
+        return services;
     }
 
     private bool ShouldConfigureKafka() => _processors.Count > 0 || _addHealthCheck;
@@ -113,7 +88,7 @@ public class KafkaGenericProcessorBuilder
         if (!_addHealthCheck)
             return null;
             
-        return _services.BuildServiceProvider()
+        return services.BuildServiceProvider()
             .GetRequiredService<IOptions<KafkaHealthCheckSettings>>()
             .Value;
     }
@@ -148,7 +123,7 @@ public class KafkaGenericProcessorBuilder
     {
         foreach (var processor in _processors)
         {
-            string producerName = $"{processor.Settings.ProducerName}_{processor.ProcessorKey}";
+            string producerName = $"producer-{processor.Settings.ProducerTopic}_{processor.ProcessorKey}";
             ConfigureProducer(clusterBuilder, processor.Settings, producerName);
             processor.ConfigureAction(clusterBuilder);
         }
@@ -167,9 +142,6 @@ public class KafkaGenericProcessorBuilder
         });
     }
     
-    /// <summary>
-    /// Configures the Kafka producer
-    /// </summary>
     private static void ConfigureProducer(
         IClusterConfigurationBuilder clusterBuilder,
         KafkaProcessorSettings settings,
@@ -183,9 +155,6 @@ public class KafkaGenericProcessorBuilder
         });
     }
     
-    /// <summary>
-    /// Configures keyed services for a specific processor
-    /// </summary>
     private static void ConfigureKeyedServices<TInput, TOutput>(
         IClusterConfigurationBuilder clusterBuilder,
         KafkaProcessorSettings settings,
@@ -194,7 +163,7 @@ public class KafkaGenericProcessorBuilder
         where TOutput : class
     {
         var consumerName = $"consumer_{processorKey}";
-        string producerName = $"{settings.ProducerName}_{processorKey}";
+        string producerName = $"producer-{settings.ProducerTopic}_{processorKey}";
         
         clusterBuilder.AddConsumer(consumer =>
         {
@@ -207,7 +176,7 @@ public class KafkaGenericProcessorBuilder
                 .WithAutoCommitIntervalMs((int)settings.AutoCommitInterval.TotalMilliseconds)
                 .AddMiddlewares(middlewares =>
                 {
-                    middlewares.AddDeserializer<JsonCoreDeserializer>();
+                    middlewares.AddSingleTypeDeserializer<TInput, JsonCoreDeserializer>();
                     
                     // Create middleware using the KeyedServiceResolver to find the correct services
                     middlewares.Add(resolver => 
@@ -215,11 +184,9 @@ public class KafkaGenericProcessorBuilder
                         var serviceResolver = resolver.Resolve<KeyedServiceResolver<TInput, TOutput>>();
                         
                         var processor = serviceResolver.GetProcessor(processorKey);
-                        var validator = serviceResolver.GetValidator(processorKey);
                         
                         return new GenericProcessingMiddleware<TInput, TOutput>(
                             processor,
-                            validator,
                             resolver.Resolve<IProducerAccessor>(),
                             settings,
                             resolver.Resolve<ILogger<GenericProcessingMiddleware<TInput, TOutput>>>(),
@@ -230,9 +197,6 @@ public class KafkaGenericProcessorBuilder
         });
     }
     
-    /// <summary>
-    /// Private class to store processor registration details
-    /// </summary>
     private class ProcessorRegistration
     {
         public required string ProcessorKey { get; set; }

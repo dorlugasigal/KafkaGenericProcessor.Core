@@ -4,17 +4,8 @@ using System.Linq;
 
 namespace KafkaGenericProcessor.Core.Configuration;
 
-/// <summary>
-/// Validates Kafka configuration settings
-/// </summary>
 internal static class KafkaConfigurationValidator
 {
-    /// <summary>
-    /// Validates the Kafka processor settings and throws exceptions for any invalid settings
-    /// </summary>
-    /// <param name="settings">The settings to validate</param>
-    /// <exception cref="ArgumentNullException">Thrown if settings is null</exception>
-    /// <exception cref="ApplicationException">Thrown if any settings are invalid</exception>
     internal static void ValidateKafkaSettings(KafkaProcessorSettings settings)
     {
         if (settings == null)
@@ -24,7 +15,7 @@ internal static class KafkaConfigurationValidator
 
         var errors = new List<string>();
 
-        if (settings.Brokers == null || settings.Brokers.Length == 0)
+        if (settings.Brokers.Length == 0)
         {
             errors.Add("Kafka brokers are not configured.");
         }
@@ -43,11 +34,6 @@ internal static class KafkaConfigurationValidator
         {
             errors.Add("Consumer group ID is not configured.");
         }
-        
-        if (string.IsNullOrWhiteSpace(settings.ProducerName))
-        {
-            errors.Add("Producer name is not configured.");
-        }
 
         if (errors.Any())
         {
@@ -65,7 +51,7 @@ internal static class KafkaConfigurationValidator
 
         var errors = new List<string>();
 
-        if (settings.Brokers == null || settings.Brokers.Length == 0)
+        if (settings.Brokers.Length == 0)
         {
             errors.Add("Kafka health check brokers are not configured.");
         }

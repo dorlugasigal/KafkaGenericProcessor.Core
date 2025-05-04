@@ -4,9 +4,6 @@ using System;
 
 namespace KafkaGenericProcessor.Core.Extensions;
 
-/// <summary>
-/// Helper class to resolve keyed services in KafkaFlow
-/// </summary>
 public class KeyedServiceResolver<TInput, TOutput>(IServiceProvider serviceProvider)
     where TInput : class
     where TOutput : class
@@ -18,10 +15,4 @@ public class KeyedServiceResolver<TInput, TOutput>(IServiceProvider serviceProvi
         return processor;
     }
 
-    public IMessageValidator<TInput> GetValidator(string key)
-    {
-        var validator = serviceProvider.GetKeyedService<IMessageValidator<TInput>>(key)
-            ?? throw new InvalidOperationException($"Validator with key '{key}' not found");
-        return validator;
-    }
 }

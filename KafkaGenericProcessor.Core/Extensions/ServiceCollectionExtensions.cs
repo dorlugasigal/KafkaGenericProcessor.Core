@@ -28,7 +28,6 @@ public static class ServiceCollectionExtensions
         IConfiguration configuration,
         string processorKey)
     {
-        // Updated to use the new Kafka.Configurations path
         var settingsSection = configuration.GetSection($"Kafka:Configurations:{processorKey}");
         var settings = new KafkaProcessorSettings();
         settingsSection.Bind(settings);
