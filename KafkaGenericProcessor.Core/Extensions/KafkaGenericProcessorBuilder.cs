@@ -1,40 +1,66 @@
+
 using KafkaFlow;
 using KafkaFlow.Configuration;
 using KafkaFlow.Producers;
 using KafkaFlow.Serializer;
-using KafkaGenericProcessor.Core.Abstractions;
-using KafkaGenericProcessor.Core.Configuration;
 using KafkaGenericProcessor.Core.Health;
+using KafkaGenericProcessor.Core.Configuration;
 using KafkaGenericProcessor.Core.Middlewares;
-using KafkaGenericProcessor.Core.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
+using AutoOffsetReset = KafkaFlow.AutoOffsetReset;
+using KafkaGenericProcessor.Core.Abstractions;
+using KafkaGenericProcessor.Core.Validation;
 
 namespace KafkaGenericProcessor.Core.Extensions;
 
-/// <summary>
-/// Builder for configuring multiple Kafka Generic Processors in a fluent API
-/// </summary>
 public class KafkaGenericProcessorBuilder
 {
     private readonly IServiceCollection _services;
     private readonly IConfiguration _configuration;
-    private readonly List<ProcessorRegistration> _processors = new();
-    private bool _addHealthCheck = false;
-    
+    private readonly ILogger<KafkaGenericProcessorBuilder> _logger;
+    private readonly List<ProcessorRegistration> _processors;
+    private bool _healthCheckEnabled;
+
     public KafkaGenericProcessorBuilder(IServiceCollection services, IConfiguration configuration)
     {
         _services = services;
         _configuration = configuration;
+        
+        // Add logging services if not already added
+        if (!_services.Any(x => x.ServiceType == typeof(ILoggerFactory)))
+        {
+            _services.AddLogging();
+        }
+        
+        var serviceProvider = _services.BuildServiceProvider();
+        _logger = serviceProvider.GetRequiredService<ILogger<KafkaGenericProcessorBuilder>>();
+        _processors = new List<ProcessorRegistration>();
+        _healthCheckEnabled = true;
+    }
+
+    public KafkaGenericProcessorBuilder AddProducer(string processorKey)
+    {
+        if (string.IsNullOrEmpty(processorKey))
+        {
+            throw new ArgumentException("Processor key cannot be null or empty", nameof(processorKey));
+        }
+
+        var settings = ServiceCollectionExtensions.ConfigureSettings(_services, _configuration, processorKey);
+        
+        _processors.Add(new ProcessorRegistration(
+            ProcessorKey: processorKey,
+            Settings: settings,
+            Type: ProcessorType.Producer,
+            ConfigureConsumerAction: null
+        ));
+        
+        return this;
     }
     
-    /// <summary>
-    /// Add a processor with input and output types to the builder
-    /// </summary>
-    public KafkaGenericProcessorBuilder AddProcessor<TInput, TOutput>(
+    
+    public KafkaGenericProcessorBuilder AddConsumerProducerProcessor<TInput, TOutput>(
         string processorKey)
         where TInput : class
         where TOutput : class
@@ -45,101 +71,101 @@ public class KafkaGenericProcessorBuilder
         }
 
         var settings = ServiceCollectionExtensions.ConfigureSettings(_services, _configuration, processorKey);
-        
-        _services.TryAddKeyedTransient(typeof(IMessageValidator<TInput>), processorKey, typeof(DefaultMessageValidator<TInput>));
 
-        _services.AddSingleton<KeyedServiceResolver<TInput, TOutput>>();
-        
-        _processors.Add(new ProcessorRegistration
-        {
-            ProcessorKey = processorKey,
-            Settings = settings,
-            ConfigureAction = cluster => ConfigureKeyedServices<TInput, TOutput>(cluster, settings, processorKey)
-        });
-        
+        _processors.Add(new ProcessorRegistration(
+            ProcessorKey: processorKey,
+            Settings: settings,
+            Type: ProcessorType.ConsumerProducer,
+            ConfigureConsumerAction: cluster => ConfigureProcessingConsumer<TInput, TOutput>(cluster, settings, processorKey)
+        ));
+
         return this;
     }
 
-    /// <summary>
-    /// Add health check configuration
-    /// </summary>
-    public KafkaGenericProcessorBuilder AddHealthCheck()
+    public KafkaGenericProcessorBuilder AddConsumerProcessor<TInput>(string processorKey)
+        where TInput : class
     {
-        var settingsSection = _configuration.GetSection($"Kafka:Configurations:healthcheck");
-        var settings = new KafkaHealthCheckSettings();
-        settingsSection.Bind(settings);
-        
-        KafkaConfigurationValidator.ValidateKafkaHealthCheckSettings(settings);
-        
-        _services.Configure<KafkaHealthCheckSettings>("healthcheck", settingsSection.Bind);
-        
-        _services.AddKafkaFlowHealthChecks();
-        _addHealthCheck = true;
+        if (string.IsNullOrEmpty(processorKey))
+        {
+            throw new ArgumentException("Processor key cannot be null or empty", nameof(processorKey));
+        }
+
+        var settings = ServiceCollectionExtensions.ConfigureSettings(_services, _configuration, processorKey);
+
+        _processors.Add(new ProcessorRegistration(
+            ProcessorKey: processorKey,
+            Settings: settings,
+            Type: ProcessorType.Consumer,
+            ConfigureConsumerAction: cluster => ConfigureProcessingConsumer<TInput, object>(cluster, settings, processorKey)
+        ));
+
         return this;
     }
 
-    /// <summary>
-    /// Build the Kafka configuration and register it with the service collection
-    /// </summary>
+    public KafkaGenericProcessorBuilder DisableHealthCheck()
+    {
+        _healthCheckEnabled = false;
+        return this;
+    }
+
     public IServiceCollection Build()
     {
-        if (!ShouldConfigureKafka())
+        if (_processors.Count == 0)
             return _services;
 
-        var healthSettings = GetHealthCheckSettings();
-        
-        _services.AddKafka(kafka => 
+        if (_healthCheckEnabled)
+        {
+            _services.AddKafkaFlowHealthChecks();
+        }
+        _services.AddSingleton<KeyedServiceResolver>();
+
+        _services.AddKafka(kafka =>
         {
             kafka.UseConsoleLog();
             
             kafka.AddCluster(cluster => 
             {
-                var allBrokers = GetAllUniqueBrokers(healthSettings);
+                var allBrokers = GetAllUniqueBrokers();
                 var clusterBuilder = cluster.WithBrokers(allBrokers);
 
-                ConfigureTopics(clusterBuilder, healthSettings);
+                ConfigureTopics(clusterBuilder);
                 ConfigureProcessors(clusterBuilder);
-                ConfigureHealthCheck(clusterBuilder, healthSettings);
+                
+                if (_healthCheckEnabled)
+                {
+                    ConfigureProducer(clusterBuilder, KafkaConstants.HealthCheck.ProducerTopic, KafkaConstants.HealthCheck.ProducerName);
+                }
             });
         });
         
         return _services;
     }
 
-    private bool ShouldConfigureKafka() => _processors.Count > 0 || _addHealthCheck;
-
-    private KafkaHealthCheckSettings? GetHealthCheckSettings()
+    private string[] GetAllUniqueBrokers()
     {
-        if (!_addHealthCheck)
-            return null;
-            
-        return _services.BuildServiceProvider()
-            .GetRequiredService<IOptions<KafkaHealthCheckSettings>>()
-            .Value;
+        return _processors
+            .SelectMany(p => p.Settings.Brokers)
+            .Distinct()
+            .ToArray();
     }
 
-    private string[] GetAllUniqueBrokers(KafkaHealthCheckSettings? healthSettings)
-    {
-        var brokers = _processors
-            .SelectMany(p => p.Settings.Brokers);
-
-        if (healthSettings != null)
-            brokers = brokers.Concat(healthSettings.Brokers);
-
-        return brokers.Distinct().ToArray();
-    }
-
-    private void ConfigureTopics(IClusterConfigurationBuilder clusterBuilder, KafkaHealthCheckSettings? healthSettings)
+    private void ConfigureTopics(IClusterConfigurationBuilder clusterBuilder)
     {
         var topics = _processors
-            .SelectMany(p => new[] { p.Settings.ConsumerTopic, p.Settings.ProducerTopic })
+            .SelectMany(p =>
+            {
+                return p.Settings.CreateTopicsIfNotExists ? new[] { p.Settings.ConsumerTopic, p.Settings.ProducerTopic } : Array.Empty<string>();
+            })
             .Where(t => !string.IsNullOrEmpty(t));
 
-        if (healthSettings != null)
-            topics = topics.Append(healthSettings.ProducerTopic);
+        if (_healthCheckEnabled)
+            topics = topics.Append(KafkaConstants.HealthCheck.ProducerTopic);
+
+        _logger.LogInformation("Found topics to create: {@Topics}", topics.Distinct());
 
         foreach (var topicName in topics.Distinct())
         {
+            Console.WriteLine($"Creating topic: {topicName}");
             clusterBuilder.CreateTopicIfNotExists(topicName);
         }
     }
@@ -148,95 +174,94 @@ public class KafkaGenericProcessorBuilder
     {
         foreach (var processor in _processors)
         {
-            string producerName = $"{processor.Settings.ProducerName}_{processor.ProcessorKey}";
-            ConfigureProducer(clusterBuilder, processor.Settings, producerName);
-            processor.ConfigureAction(clusterBuilder);
+            switch (processor.Type)
+            {
+                case ProcessorType.Producer:
+                    _logger.LogInformation("Configuring producer: {ProducerName} for topic: {Topic}",
+                        processor.Settings.ProducerName, processor.Settings.ProducerTopic);
+                    ConfigureProducer(clusterBuilder, processor.Settings.ProducerTopic, processor.Settings.ProducerName);
+                    break;
+                    
+                case ProcessorType.ConsumerProducer:
+                    processor.ConfigureConsumerAction!(clusterBuilder);
+                    _logger.LogInformation("Configuring producer: {ProducerName} for topic: {Topic}",
+                        processor.Settings.ProducerName, processor.Settings.ProducerTopic);
+                    ConfigureProducer(clusterBuilder, processor.Settings.ProducerTopic, processor.Settings.ProducerName);
+                    break;
+                    
+                case ProcessorType.Consumer:
+                    processor.ConfigureConsumerAction!(clusterBuilder);
+                    break;
+            }
         }
     }
-
-    private void ConfigureHealthCheck(IClusterConfigurationBuilder clusterBuilder, KafkaHealthCheckSettings? healthSettings)
-    {
-        if (healthSettings == null)
-            return;
-
-        clusterBuilder.AddProducer(healthSettings.ProducerName, producer =>
-        {
-            producer
-                .DefaultTopic(healthSettings.ProducerTopic)
-                .AddMiddlewares(middlewares => middlewares.AddSerializer<JsonCoreSerializer>());
-        });
-    }
     
-    /// <summary>
-    /// Configures the Kafka producer
-    /// </summary>
     private static void ConfigureProducer(
         IClusterConfigurationBuilder clusterBuilder,
-        KafkaProcessorSettings settings,
+        string producerTopic,
         string producerName)
     {
         clusterBuilder.AddProducer(producerName, producer =>
         {
             producer
-                .DefaultTopic(settings.ProducerTopic)
+                .DefaultTopic(producerTopic)
                 .AddMiddlewares(middlewares => middlewares.AddSerializer<JsonCoreSerializer>());
         });
     }
     
-    /// <summary>
-    /// Configures keyed services for a specific processor
-    /// </summary>
-    private static void ConfigureKeyedServices<TInput, TOutput>(
+    private static void ConfigureProcessingConsumer<TInput, TOutput>(
         IClusterConfigurationBuilder clusterBuilder,
         KafkaProcessorSettings settings,
         string processorKey)
         where TInput : class
         where TOutput : class
     {
-        var consumerName = $"consumer_{processorKey}";
-        string producerName = $"{settings.ProducerName}_{processorKey}";
-        
         clusterBuilder.AddConsumer(consumer =>
         {
             consumer
                 .Topic(settings.ConsumerTopic)
-                .WithName(consumerName)
+                .WithName($"consumer_{processorKey}")
                 .WithGroupId($"{settings.GroupId}_{processorKey}")
+                .WithAutoOffsetReset(AutoOffsetReset.Earliest)
+                .WithoutStoringOffsets()
                 .WithBufferSize(settings.BufferSize)
                 .WithWorkersCount(settings.WorkersCount)
                 .WithAutoCommitIntervalMs((int)settings.AutoCommitInterval.TotalMilliseconds)
                 .AddMiddlewares(middlewares =>
                 {
-                    middlewares.AddDeserializer<JsonCoreDeserializer>();
+                    middlewares.AddSingleTypeDeserializer<TInput, JsonCoreDeserializer>();
                     
-                    // Create middleware using the KeyedServiceResolver to find the correct services
-                    middlewares.Add(resolver => 
+                    middlewares.Add<IMessageMiddleware>(resolver => 
                     {
-                        var serviceResolver = resolver.Resolve<KeyedServiceResolver<TInput, TOutput>>();
+
+                        var serviceResolver = resolver.Resolve<KeyedServiceResolver>();
                         
-                        var processor = serviceResolver.GetProcessor(processorKey);
-                        var validator = serviceResolver.GetValidator(processorKey);
-                        
+                        var validator = serviceResolver.GetMessageValidator<TInput>(processorKey) ?? 
+                                resolver.Resolve<DefaultMessageValidator<TInput>>();
+
                         return new GenericProcessingMiddleware<TInput, TOutput>(
-                            processor,
+                            serviceResolver.GetProcessor<TInput, TOutput>(processorKey),
+                            serviceResolver.GetConsumerOnlyProcessor<TInput>(processorKey),
                             validator,
                             resolver.Resolve<IProducerAccessor>(),
                             settings,
-                            resolver.Resolve<ILogger<GenericProcessingMiddleware<TInput, TOutput>>>(),
-                            producerName
+                            resolver.Resolve<ILogger<GenericProcessingMiddleware<TInput, TOutput>>>()
                         );
                     });
                 });
         });
     }
-    
-    /// <summary>
-    /// Private class to store processor registration details
-    /// </summary>
-    private class ProcessorRegistration
+
+    private enum ProcessorType
     {
-        public required string ProcessorKey { get; set; }
-        public required KafkaProcessorSettings Settings { get; set; }
-        public required Action<IClusterConfigurationBuilder> ConfigureAction { get; set; }
+        Producer,
+        ConsumerProducer,
+        Consumer
     }
+
+    private record ProcessorRegistration(
+        string ProcessorKey,
+        KafkaProcessorSettings Settings,
+        ProcessorType Type,
+        Action<IClusterConfigurationBuilder>? ConfigureConsumerAction);
 }

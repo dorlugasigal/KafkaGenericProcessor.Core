@@ -1,7 +1,7 @@
 using KafkaGenericProcessor.Core.Abstractions;
 using Microsoft.Extensions.Logging;
 
-namespace KafkaGenericProcessor.Core.Services;
+namespace KafkaGenericProcessor.Core.Validation;
 
 /// <summary>
 /// Default implementation of IMessageValidator that always returns true

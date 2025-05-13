@@ -22,9 +22,8 @@ builder.Services.AddKeyedTransient<IMessageValidator<MyInput>, MyInputValidator2
 // Use the builder pattern to register processors and health check in a simple fluent API
 builder.Services
     .AddKafkaGenericProcessors(builder.Configuration)
-    .AddProcessor<MyInput, MyOutput>("enrich1")
-    .AddProcessor<MyInput, MyOutput>("enrich2")
-    .AddHealthCheck()
+    .AddConsumerProducerProcessor<MyInput, MyOutput>("enrich1")
+    .AddConsumerProducerProcessor<MyInput, MyOutput>("enrich2")
     .Build();
 
 var app = builder.Build();
@@ -57,7 +56,7 @@ app.MapGet("/test-input-enrich1", async (IProducerAccessor producerAccessor, IOp
     var testMessage = new MyInput("A123", $"This message is handled by enrich1 processor at {DateTime.Now}");
     
     // Use the named producer based on the processor key
-    string producerName = $"{kafkaSettings.ProducerName}_enrich1";
+    string producerName = $"producer-{kafkaSettings.ProducerTopic}-enrich1";
     var producer = producerAccessor.GetProducer(producerName);
     
     if (producer == null)
@@ -75,9 +74,9 @@ app.MapGet("/test-input-enrich2", async (IProducerAccessor producerAccessor, IOp
     var testMessage = new MyInput("B456", $"This message with more than 10 characters is handled by enrich2 processor at {DateTime.Now}");
     
     // Use the named producer based on the processor key
-    string producerName = $"{kafkaSettings.ProducerName}_enrich2";
+    var producerName = $"producer-{kafkaSettings.ProducerTopic}-enrich2";
     var producer = producerAccessor.GetProducer(producerName);
-    
+
     if (producer == null)
     {
         return Results.Problem($"Producer '{producerName}' not found. Check your Kafka configuration.");

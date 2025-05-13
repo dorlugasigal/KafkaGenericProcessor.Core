@@ -1,27 +1,46 @@
 using KafkaGenericProcessor.Core.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
-using System;
+using Microsoft.Extensions.Logging;
 
 namespace KafkaGenericProcessor.Core.Extensions;
 
-/// <summary>
-/// Helper class to resolve keyed services in KafkaFlow
-/// </summary>
-public class KeyedServiceResolver<TInput, TOutput>(IServiceProvider serviceProvider)
-    where TInput : class
-    where TOutput : class
+public class KeyedServiceResolver(IServiceProvider serviceProvider, ILogger<KeyedServiceResolver> logger)
 {
-    public IMessageProcessor<TInput, TOutput> GetProcessor(string key)
+
+    public IMessageProcessor<TInput, TOutput>? GetProcessor<TInput, TOutput>(string key)
+        where TInput : class
+        where TOutput : class
     {
-        var processor = serviceProvider.GetKeyedService<IMessageProcessor<TInput, TOutput>>(key)
-            ?? throw new InvalidOperationException($"Processor with key '{key}' not found");
+        var processor = serviceProvider.GetKeyedService<IMessageProcessor<TInput, TOutput>>(key);
+                              
+        if (processor == null)
+        {
+            logger.LogInformation("processor with key '{Key}' not found", key);
+        }
+        return processor;
+    }
+    
+    public IConsumerOnlyProcessor<TInput>? GetConsumerOnlyProcessor<TInput>(string key)
+        where TInput : class
+    {
+        var processor = serviceProvider.GetKeyedService<IConsumerOnlyProcessor<TInput>>(key);
+            
+        if (processor == null)
+        {
+            logger.LogInformation("Consumer-only processor with key '{Key}' not found", key);
+        }
         return processor;
     }
 
-    public IMessageValidator<TInput> GetValidator(string key)
+    public IMessageValidator<TInput>? GetMessageValidator<TInput>(string key)
+        where TInput : class
     {
-        var validator = serviceProvider.GetKeyedService<IMessageValidator<TInput>>(key)
-            ?? throw new InvalidOperationException($"Validator with key '{key}' not found");
+        var validator = serviceProvider.GetKeyedService<IMessageValidator<TInput>>(key);
+            
+        if (validator == null)
+        {
+            logger.LogInformation("Message validator with key '{Key}' not found", key);
+        }
         return validator;
     }
 }
