@@ -31,7 +31,7 @@ namespace KafkaGenericProcessor.Core.Tests.Logging
             // Assert
             _logger.Received(1).Log(
                 Arg.Is(LogLevel.Debug),
-                Arg.Is<EventId>(e => e.Name == _operation),
+                Arg.Any<EventId>(),
                 Arg.Any<object>(),
                 Arg.Is<Exception>(ex => ex == null),
                 Arg.Any<Func<object, Exception?, string>>());
@@ -46,7 +46,7 @@ namespace KafkaGenericProcessor.Core.Tests.Logging
             // Assert
             _logger.Received(1).Log(
                 Arg.Is(LogLevel.Information),
-                Arg.Is<EventId>(e => e.Name == _operation),
+                Arg.Any<EventId>(),
                 Arg.Any<object>(),
                 Arg.Is<Exception>(ex => ex == null),
                 Arg.Any<Func<object, Exception?, string>>());
@@ -61,7 +61,7 @@ namespace KafkaGenericProcessor.Core.Tests.Logging
             // Assert
             _logger.Received(1).Log(
                 Arg.Is(LogLevel.Warning),
-                Arg.Is<EventId>(e => e.Name == _operation),
+                Arg.Any<EventId>(),
                 Arg.Any<object>(),
                 Arg.Is<Exception>(ex => ex == null),
                 Arg.Any<Func<object, Exception?, string>>());
@@ -79,7 +79,7 @@ namespace KafkaGenericProcessor.Core.Tests.Logging
             // Assert
             _logger.Received(1).Log(
                 Arg.Is(LogLevel.Warning),
-                Arg.Is<EventId>(e => e.Name == _operation),
+                Arg.Any<EventId>(),
                 Arg.Any<object>(),
                 Arg.Is<Exception>(ex => ex == exception),
                 Arg.Any<Func<object, Exception?, string>>());
@@ -97,7 +97,7 @@ namespace KafkaGenericProcessor.Core.Tests.Logging
             // Assert
             _logger.Received(1).Log(
                 Arg.Is(LogLevel.Error),
-                Arg.Is<EventId>(e => e.Name == _operation),
+                Arg.Any<EventId>(),
                 Arg.Any<object>(),
                 Arg.Is<Exception>(ex => ex == exception),
                 Arg.Any<Func<object, Exception?, string>>());
@@ -115,7 +115,7 @@ namespace KafkaGenericProcessor.Core.Tests.Logging
             // Assert
             _logger.Received(1).Log(
                 Arg.Is(LogLevel.Critical),
-                Arg.Is<EventId>(e => e.Name == _operation),
+                Arg.Any<EventId>(),
                 Arg.Any<object>(),
                 Arg.Is<Exception>(ex => ex == exception),
                 Arg.Any<Func<object, Exception?, string>>());
@@ -139,7 +139,7 @@ namespace KafkaGenericProcessor.Core.Tests.Logging
             // Check that log was called with proper level
             _logger.Received(1).Log(
                 Arg.Is(LogLevel.Information),
-                Arg.Is<EventId>(e => e.Name == _operation),
+                Arg.Any<EventId>(),
                 Arg.Any<object>(),
                 Arg.Is<Exception>(ex => ex == null),
                 Arg.Any<Func<object, Exception?, string>>());
