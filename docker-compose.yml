@@ -15,7 +15,8 @@ services:
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     ports:
       - "9092:9092"
     environment:
@@ -29,7 +30,7 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_CREATE_TOPICS: "input-topic:1:1,output-topic-1:1:1,output-topic-2:1:1,kafka-health-check-topic:1:1"
+      KAFKA_CREATE_TOPICS: "input-topic:1:1,output-topic-1:1:1,output-topic-2:1:1,kafka-health-check:1:1"
       KAFKA_DEFAULT_REPLICATION_FACTOR: 1
     healthcheck:
       test:
@@ -74,11 +75,12 @@ services:
   simulator:
     image: confluentinc/cp-kafkacat:latest
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
     command: >
       /bin/sh -c '
       sleep 20;
       while true; do
-        echo "{\"Id\":\"A123\",\"Content\":\"Test message for enrich1\"}" | kafkacat -P -b kafka:9092 -t input-topic;
+        echo "{\"Id\":\"A123\",\"Content\":\"Test message\"}" | kafkacat -P -b kafka:9092 -t input-topic;
         sleep 5;
       done'

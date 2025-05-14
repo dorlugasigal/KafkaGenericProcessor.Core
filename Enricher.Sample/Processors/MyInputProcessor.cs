@@ -14,16 +14,15 @@ public class MyInputProcessor : IMessageProcessor<MyInput, MyOutput>
     /// Processes a MyMessage and transforms it into a MyOutputMessage
     /// </summary>
     /// <param name="input">The input message</param>
+    /// <param name="correlationId">Correlation ID for tracking the message</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The processed output message</returns>
-    public Task<MyOutput> ProcessAsync(MyInput input, CancellationToken cancellationToken = default)
+    public Task<MyOutput> ProcessAsync(MyInput input, string correlationId, CancellationToken cancellationToken = default)
     {
-        // Transform the input message to output message with input data included for tracing
         var output = new MyOutput(
-            ProducedBy: $"Enricher.Sample - Input ID: {input.Id}, Content: {input.Content}",
+            ProducedBy: $"processor:{nameof(MyInputProcessor)}, Enricher.Sample - Input ID: {input.Id}, Content: {input.Content}, Correlation ID: {correlationId}",
             ProcessedAt: DateTime.UtcNow
         );
 
-        return Task.FromResult(output);
-    }
+        return Task.FromResult(output);    }
 }

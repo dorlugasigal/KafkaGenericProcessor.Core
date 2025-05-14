@@ -1,6 +1,6 @@
 namespace KafkaGenericProcessor.Core.Configuration;
 
-public static class KafkaConstants
+internal static class KafkaConstants
 {
     public static class HealthCheck
     {

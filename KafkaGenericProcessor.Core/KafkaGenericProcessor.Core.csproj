@@ -4,6 +4,20 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Version>1.0.0</Version>
+    <Authors>KafkaGenericProcessor Team</Authors>
+    <Company>KafkaGenericProcessor</Company>
+    <Description>A robust, type-safe framework for building Kafka message processing applications in .NET. Simplify your Kafka consumer and producer implementation with a comprehensive set of features designed for enterprise applications.</Description>
+    <Copyright>Copyright © 2025</Copyright>
+    <PackageId>KafkaGenericProcessor.Core</PackageId>
+    <PackageTags>kafka;messaging;streaming;dotnet;processor</PackageTags>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/yourusername/KafkaGenericProcessor</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/yourusername/KafkaGenericProcessor</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,6 +30,11 @@
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="9.0.4" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.4" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\assets\icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>

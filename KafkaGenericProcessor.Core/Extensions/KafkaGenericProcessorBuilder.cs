@@ -10,7 +10,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using AutoOffsetReset = KafkaFlow.AutoOffsetReset;
-using KafkaGenericProcessor.Core.Abstractions;
 using KafkaGenericProcessor.Core.Validation;
 
 namespace KafkaGenericProcessor.Core.Extensions;

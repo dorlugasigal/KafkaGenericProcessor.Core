@@ -5,5 +5,11 @@
     <Platform Name="x86" />
   </Configurations>
   <Project Path="Enricher.Sample/Enricher.Sample.csproj" />
+  <Project Path="KafkaGenericProcessor.Core.Tests\KafkaGenericProcessor.Core.Tests.csproj" Type="Classic C#">
+    <Configuration Solution="Debug|x64" Project="Debug|Any CPU" />
+    <Configuration Solution="Debug|x86" Project="Debug|Any CPU" />
+    <Configuration Solution="Release|x64" Project="Release|Any CPU" />
+    <Configuration Solution="Release|x86" Project="Release|Any CPU" />
+  </Project>
   <Project Path="KafkaGenericProcessor.Core/KafkaGenericProcessor.Core.csproj" />
 </Solution>

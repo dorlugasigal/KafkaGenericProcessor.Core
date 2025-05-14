@@ -1,5 +1,6 @@
 using Enricher.Sample.Models;
 using KafkaGenericProcessor.Core.Abstractions;
+using KafkaGenericProcessor.Core.Exceptions;
 using Microsoft.Extensions.Logging;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,21 +23,28 @@ public class MyInputValidator : IMessageValidator<MyInput>
         _logger = logger;
     }
 
+    public Task<IReadOnlyList<ValidationError>> GetValidationErrorsAsync(MyInput message, string correlationId, CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
+
     /// <summary>
     /// Validates a MyMessage
     /// </summary>
     /// <param name="input">The message to validate</param>
+    /// <param name="correlationId">Correlation ID for tracking the message</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>True if the message is valid, otherwise false</returns>
-    public Task<bool> ValidateAsync(MyInput input, CancellationToken cancellationToken = default)
+
+    public Task<bool> ValidateAsync(MyInput message, string correlationId, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(input.Id))
+        if (string.IsNullOrEmpty(message.Id))
         {
             _logger.LogWarning("Message ID cannot be null or empty");
             return Task.FromResult(false);
         }
 
-        if (string.IsNullOrEmpty(input.Content))
+        if (string.IsNullOrEmpty(message.Content))
         {
             _logger.LogWarning("Message content cannot be null or empty");
             return Task.FromResult(false);

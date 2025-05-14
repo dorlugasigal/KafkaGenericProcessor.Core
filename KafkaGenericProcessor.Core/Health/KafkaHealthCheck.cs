@@ -5,30 +5,23 @@ using KafkaGenericProcessor.Core.Configuration;
 
 namespace KafkaGenericProcessor.Core.Health;
 
-public class KafkaHealthCheck : IHealthCheck
+internal class KafkaHealthCheck(
+    IProducerAccessor producerAccessor,
+    ILogger<KafkaHealthCheck> logger)
+    : IHealthCheck
 {
-    private readonly IProducerAccessor _producerAccessor;
-    private readonly ILogger<KafkaHealthCheck> _logger;
     private DateTime _lastSuccessfulCheck = DateTime.MinValue;
-
-    public KafkaHealthCheck(
-        IProducerAccessor producerAccessor,
-        ILogger<KafkaHealthCheck> logger)
-    {
-        _producerAccessor = producerAccessor;
-        _logger = logger;
-    }
 
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
         try
         {
-            var producer = _producerAccessor.GetProducer(KafkaConstants.HealthCheck.ProducerName);
+            var producer = producerAccessor.GetProducer(KafkaConstants.HealthCheck.ProducerName);
             
             if (producer == null)
             {
                 var message = $"Producer '{KafkaConstants.HealthCheck.ProducerName}' not found";
-                _logger.LogWarning(message);
+                logger.LogWarning(message);
                 return new HealthCheckResult(context.Registration.FailureStatus, message);
             }
 
@@ -52,7 +45,7 @@ public class KafkaHealthCheck : IHealthCheck
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during Kafka health check");
+            logger.LogError(ex, "Error during Kafka health check");
             return new HealthCheckResult(
                 context.Registration.FailureStatus,
                 "Failed to connect to Kafka",

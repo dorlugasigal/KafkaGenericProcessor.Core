@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 
 namespace KafkaGenericProcessor.Core.Health;
 
-public static class HealthCheckExtensions
+internal static class HealthCheckExtensions
 {
     public static IHealthChecksBuilder AddKafkaFlowHealthChecks(this IServiceCollection services)
     {

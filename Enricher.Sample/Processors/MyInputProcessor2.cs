@@ -14,16 +14,16 @@ public class MyInputProcessor2 : IMessageProcessor<MyInput, MyOutput>
     /// Processes a MyInput and transforms it into a MyOutput with alternative processing
     /// </summary>
     /// <param name="input">The input message</param>
+    /// <param name="correlationId">Correlation ID for tracking the message</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The processed output message</returns>
-    public Task<MyOutput> ProcessAsync(MyInput input, CancellationToken cancellationToken = default)
+    public Task<MyOutput> ProcessAsync(MyInput input, string correlationId, CancellationToken cancellationToken = default)
     {
-        // This processor provides an alternative transformation with a different format
         var output = new MyOutput(
-            ProducedBy: $"Enricher.Sample (Alternative Processor) - Message '{input.Content}' from ID: {input.Id}",
+            ProducedBy: $"processor:{nameof(MyInputProcessor2)}, Enricher.Sample (Alternative Processor) - Message '{input.Content}' from ID: {input.Id}",
             ProcessedAt: DateTime.UtcNow
         );
-
         return Task.FromResult(output);
+
     }
 }

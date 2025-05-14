@@ -1,0 +1,8 @@
+This is a placeholder for the NuGet package icon.
+
+A proper icon.png file should be created here with:
+- Image size: 512x512 or 256x256 pixels
+- File format: PNG with transparent background
+- Content: Something that represents the Kafka Generic Processor library, such as a stylized letter K with data flow symbols or a representation of message processing
+
+The icon will be used for the NuGet package and should align with the project branding.
