@@ -1,5 +1,7 @@
 # KafkaGenericProcessor.Core
 
+> NOTE: This library is 100% vibe code material, the requirements were wrapping the KafkaFlow library to provide a simplified consume + consumeproduce + produce abilities with an easy simple fluent pattern. this library is in no means production ready, do not use it in production, contributions are welcomed, but please vibe code them
+
 [![NuGet](https://img.shields.io/nuget/v/KafkaGenericProcessor.Core.svg)](https://www.nuget.org/packages/KafkaGenericProcessor.Core/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
