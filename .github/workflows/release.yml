@@ -6,53 +6,53 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (leave blank to use tag)'
+        description: "Version to release (leave blank to use tag)"
         required: false
-        default: ''
+        default: ""
 
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: 9.0.x
-    
-    - name: Restore dependencies
-      run: dotnet restore
-    
-    - name: Build
-      run: dotnet build --configuration Release --no-restore
 
-    - name: Test
-      run: dotnet test --configuration Release --no-build --verbosity normal
-      
-    - name: Determine version
-      id: determine-version
-      run: |
-        if [[ "${{ github.event.inputs.version }}" != "" ]]; then
-          echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-        elif [[ "${{ github.event.release.tag_name }}" != "" ]]; then
-          echo "version=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
-        else
-          echo "No version specified"
-          exit 1
-        fi
-    
-    - name: Pack
-      run: dotnet pack --configuration Release --no-build -p:PackageVersion=${{ steps.determine-version.outputs.version }} --output ./nuget
-    
-    - name: Push to NuGet
-      run: dotnet nuget push "./nuget/*.nupkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
-      
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: nuget-packages
-        path: ./nuget
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test --configuration Release --no-build --verbosity normal
+
+      - name: Determine version
+        id: determine-version
+        run: |
+          if [[ "${{ github.event.inputs.version }}" != "" ]]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event.release.tag_name }}" != "" ]]; then
+            echo "version=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
+          else
+            echo "No version specified"
+            exit 1
+          fi
+
+      - name: Pack
+        run: dotnet pack --configuration Release --no-build -p:PackageVersion=${{ steps.determine-version.outputs.version }} --output ./nuget
+
+      - name: Push to NuGet
+        run: dotnet nuget push "./nuget/*.nupkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: ./nuget
